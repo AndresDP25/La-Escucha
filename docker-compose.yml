@@ -1,0 +1,63 @@
+# ============================================================================
+# Entorno de desarrollo / produccion simple con Docker Compose.
+# Levanta PostgreSQL + la API + el worker de procesamiento.
+# ============================================================================
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sld_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sld
+      POSTGRES_PASSWORD: sld
+      POSTGRES_DB: social_listening
+    ports:
+      # 5432 suele estar ocupado en esta maquina; el contenedor sigue en 5432 interno.
+      - "5436:5432"
+    volumes:
+      - sld_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sld -d social_listening"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: sld_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 3000
+      DATABASE_URL: postgresql://sld:sld@db:5432/social_listening?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      ANONYMIZATION_PEPPER: ${ANONYMIZATION_PEPPER}
+      QUEUE_SCHEMA: pgboss
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+    ports:
+      - "3000:3000"
+    command: ["node", "dist/server.js"]
+
+  worker:
+    build: .
+    container_name: sld_worker
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://sld:sld@db:5432/social_listening?schema=public
+      ANONYMIZATION_PEPPER: ${ANONYMIZATION_PEPPER}
+      QUEUE_SCHEMA: pgboss
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+    command: ["node", "dist/worker.js"]
+
+volumes:
+  sld_pgdata:

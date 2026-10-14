@@ -1,0 +1,200 @@
+const TOKEN_KEY = 'sld_token';
+const USER_KEY = 'sld_user';
+const TENANT_KEY = 'sld_tenant_id';
+
+export interface SessionUser {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+  tenantId: string | null;
+  tenantName?: string;
+  tenantSlug?: string | null;
+}
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function getUser(): SessionUser | null {
+  const raw = localStorage.getItem(USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as SessionUser;
+  } catch {
+    return null;
+  }
+}
+
+export function setSession(token: string, user: SessionUser): void {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+export function clearSession(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+export function getActiveTenantId(): string | null {
+  return localStorage.getItem(TENANT_KEY);
+}
+
+export function setActiveTenantId(id: string | null): void {
+  if (id) localStorage.setItem(TENANT_KEY, id);
+  else localStorage.removeItem(TENANT_KEY);
+}
+
+export interface TenantOption {
+  id: string;
+  name: string;
+  slug: string;
+  isActive?: boolean;
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = getToken();
+  const headers = new Headers(init.headers);
+  if (!headers.has('Content-Type') && init.body) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const tenantId = getActiveTenantId();
+  if (tenantId) headers.set('x-tenant-id', tenantId);
+
+  const res = await fetch(`/api${path}`, { ...init, headers });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) {
+    throw new Error(data.error ?? `Error ${res.status}`);
+  }
+  return data;
+}
+
+export function fetchMe() {
+  return request<{ user: SessionUser }>('/auth/me');
+}
+
+export function fetchTenants() {
+  return request<TenantOption[]>('/tenants');
+}
+
+export function createTenant(name: string, slug: string) {
+  return request<TenantOption>('/tenants', {
+    method: 'POST',
+    body: JSON.stringify({ name, slug }),
+  });
+}
+
+export function patchTenant(id: string, isActive: boolean) {
+  return request<TenantOption>(`/tenants/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive }),
+  });
+}
+
+export function login(email: string, password: string) {
+  return request<{ token: string; user: SessionUser }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export interface Summary {
+  total: number;
+  posts: number;
+  byCategory: { category: string; count: number }[];
+  bySentiment: { sentiment: string; count: number }[];
+}
+
+export function fetchSummary() {
+  return request<Summary>('/analytics/summary');
+}
+
+export interface CommentRow {
+  id: string;
+  cleanText: string;
+  category: string;
+  sentiment: string;
+  isAnonymized: boolean;
+  emojis: string[];
+  likeCount: number | null;
+  publishedAt: string | null;
+  post: {
+    caption: string | null;
+    url: string | null;
+    ownerUsername: string | null;
+  };
+}
+
+export function fetchComments() {
+  return request<{ page: number; pageSize: number; total: number; items: CommentRow[] }>(
+    '/analytics/comments?pageSize=50',
+  );
+}
+
+export interface PostComment {
+  id: string;
+  cleanText: string;
+  category: string;
+  sentiment: string;
+  isAnonymized: boolean;
+  emojis: string[];
+  likeCount: number | null;
+  publishedAt: string | null;
+}
+
+export interface PostRow {
+  id: string;
+  caption: string | null;
+  url: string | null;
+  ownerUsername: string | null;
+  publishedAt: string | null;
+  comments: PostComment[];
+}
+
+export function fetchPosts() {
+  return request<{ items: PostRow[] }>('/analytics/posts');
+}
+
+export interface WatchlistRow {
+  id: string;
+  username: string;
+  reason: string;
+  status: string;
+  lastSeenAt: string;
+}
+
+export function fetchWatchlist() {
+  return request<WatchlistRow[]>('/watchlist');
+}
+
+export function patchWatchlist(id: string, status: string) {
+  return request<WatchlistRow>(`/watchlist/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export interface ScrapeTargets {
+  accounts: string[];
+  apifyConfigured: boolean;
+}
+
+export function fetchScrapeTargets() {
+  return request<ScrapeTargets>('/scrape/targets');
+}
+
+export interface ScrapeRunResult {
+  accounts: string[];
+  resultsPerAccount: number;
+  posts: number;
+  comments: number;
+  duplicated: boolean;
+}
+
+export function runScrape(resultsPerAccount: number) {
+  return request<ScrapeRunResult>('/scrape/run', {
+    method: 'POST',
+    body: JSON.stringify({ resultsPerAccount }),
+  });
+}
