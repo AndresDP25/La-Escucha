@@ -9,7 +9,8 @@ import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma';
 import { authenticate, authorize } from '../../middlewares/auth';
-import { ConflictError, NotFoundError } from '../../shared/errors';
+import { ConflictError, NotFoundError, ValidationError } from '../../shared/errors';
+import { normalizeHandle } from '../scraping/scraping.service';
 
 const CreateTenantSchema = z.object({
   name: z.string().min(1),
@@ -17,6 +18,7 @@ const CreateTenantSchema = z.object({
     .string()
     .min(2)
     .regex(/^[a-z0-9-]+$/, 'slug: solo minusculas, numeros y guiones'),
+  instagram: z.string().trim().min(1).max(200),
 });
 
 const PatchTenantSchema = z.object({
@@ -33,6 +35,7 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
       id: true,
       name: true,
       slug: true,
+      instagramHandle: true,
       isActive: true,
       createdAt: true,
     } as const;
@@ -52,7 +55,13 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/tenants', { preHandler: authorize('SUPER_ADMIN') }, async (request, reply) => {
-    const { name, slug } = CreateTenantSchema.parse(request.body);
+    const { name, slug, instagram } = CreateTenantSchema.parse(request.body);
+    const instagramHandle = normalizeHandle(instagram);
+    if (!instagramHandle) {
+      throw new ValidationError(
+        'El Instagram tiene que ser un usuario, por ejemplo sanfermunicipio.',
+      );
+    }
     const existing = await prisma.tenant.findUnique({
       where: { slug },
       select: { id: true, isActive: true },
@@ -68,11 +77,19 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
       data: {
         name,
         slug,
+        instagramHandle,
         webhookSecret: randomBytes(32).toString('hex'),
         anonymizationSalt: randomBytes(16).toString('hex'),
       },
       // Devolvemos el webhookSecret SOLO al crear, para configurar el proveedor.
-      select: { id: true, name: true, slug: true, isActive: true, webhookSecret: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        instagramHandle: true,
+        isActive: true,
+        webhookSecret: true,
+      },
     });
     return reply.code(201).send(tenant);
   });
@@ -91,7 +108,7 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
       return prisma.tenant.update({
         where: { id },
         data: { isActive },
-        select: { id: true, name: true, slug: true, isActive: true },
+        select: { id: true, name: true, slug: true, instagramHandle: true, isActive: true },
       });
     },
   );

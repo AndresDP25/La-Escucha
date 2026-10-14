@@ -878,6 +878,7 @@ function AccountsPage({
 }) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
+  const [instagram, setInstagram] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
@@ -895,12 +896,15 @@ function AccountsPage({
     setError('');
     setOk('');
     try {
-      const created = await createTenant(name.trim(), slug.trim());
+      const created = await createTenant(name.trim(), slug.trim(), instagram.trim());
       onCreated(created);
       setName('');
       setSlug('');
+      setInstagram('');
       setSlugTouched(false);
-      setOk(`Lista “${created.name}”. Slug para ingest: ${created.slug}`);
+      setOk(
+        `Lista “${created.name}”. Buscar trae posts de @${created.instagramHandle}.`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo crear');
     } finally {
@@ -941,8 +945,9 @@ function AccountsPage({
       </button>
       <h2>Cuentas</h2>
       <p className="muted settings-lead">
-        Cada cuenta es un tenant. Desactivar la saca del selector sin borrar
-        posts. Crear no scrapea Instagram; después cargás el JSON con ingest.
+        Cada cuenta es un municipio o una persona, y un perfil de Instagram.
+        Buscar trae los posts de ese perfil. Desactivar la saca del selector
+        sin borrar lo ya cargado.
       </p>
 
       <form className="card account-form" onSubmit={(e) => void onSubmit(e)}>
@@ -969,13 +974,27 @@ function AccountsPage({
           required
         />
         <p className="muted field-hint">
-          Solo minúsculas, números y guiones. Tiene que coincidir con el
-          segundo argumento de <code>npm run ingest:local</code>.
+          Solo minúsculas, números y guiones.
+        </p>
+        <label htmlFor="tenant-instagram">Instagram a scrapear</label>
+        <input
+          id="tenant-instagram"
+          value={instagram}
+          onChange={(e) => setInstagram(e.target.value)}
+          placeholder="sanfermunicipio"
+          required
+        />
+        <p className="muted field-hint">
+          El usuario, sin @. Al elegir esta cuenta, Buscar trae sus posts.
         </p>
         {error ? <p className="error">{error}</p> : null}
         {ok ? <p className="ok-msg">{ok}</p> : null}
         <p>
-          <button className="btn" type="submit" disabled={busy || !name.trim() || !slug.trim()}>
+          <button
+            className="btn"
+            type="submit"
+            disabled={busy || !name.trim() || !slug.trim() || !instagram.trim()}
+          >
             {busy ? 'Creando…' : 'Crear cuenta'}
           </button>
         </p>
@@ -998,7 +1017,9 @@ function AccountsPage({
                     ) : null}
                     {inactive ? <span className="pill dim">Inactiva</span> : null}
                   </strong>
-                  <span className="muted">{t.slug}</span>
+                  <span className="muted">
+                    {t.instagramHandle ? `@${t.instagramHandle}` : t.slug}
+                  </span>
                 </span>
                 <button
                   type="button"

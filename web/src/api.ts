@@ -49,6 +49,7 @@ export interface TenantOption {
   id: string;
   name: string;
   slug: string;
+  instagramHandle?: string | null;
   isActive?: boolean;
 }
 
@@ -78,10 +79,10 @@ export function fetchTenants() {
   return request<TenantOption[]>('/tenants');
 }
 
-export function createTenant(name: string, slug: string) {
+export function createTenant(name: string, slug: string, instagram: string) {
   return request<TenantOption>('/tenants', {
     method: 'POST',
-    body: JSON.stringify({ name, slug }),
+    body: JSON.stringify({ name, slug, instagram }),
   });
 }
 
