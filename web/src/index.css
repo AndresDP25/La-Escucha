@@ -611,6 +611,147 @@ main {
   gap: 0.4rem;
 }
 
+.compare-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0 0 1.15rem;
+}
+
+.compare-picks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.42rem 0.95rem 0.42rem 0.5rem;
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.compare-picks input {
+  appearance: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+  border: 1.5px solid #c5ced6;
+  border-radius: 6px;
+  background: #fff;
+  display: grid;
+  place-content: center;
+}
+
+.compare-picks input::after {
+  content: '';
+  width: 0.28rem;
+  height: 0.5rem;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-1px, -1px);
+  opacity: 0;
+}
+
+.compare-picks input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.compare-picks input:checked::after {
+  opacity: 1;
+}
+
+.compare-picks input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.compare-picks label:focus-within {
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 2px;
+}
+
+.compare-picks label.on {
+  border-color: var(--accent);
+  background: var(--pill-bg);
+  color: var(--accent-dark);
+}
+
+.compare-scroll {
+  overflow-x: auto;
+}
+
+.compare-table th.num,
+.compare-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-account,
+.compare-handle {
+  display: block;
+}
+
+.compare-handle {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+.compare-table button.cell {
+  background: transparent;
+  border: 0;
+  color: var(--accent-dark);
+  font-weight: 700;
+  min-width: 2rem;
+  padding: 0.15rem 0.4rem;
+}
+
+.compare-table button.cell.on,
+.compare-table button.cell:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.compare-table tr.compare-other th,
+.compare-table tr.compare-other td {
+  color: var(--muted);
+}
+
+.compare-table tr.compare-total th,
+.compare-table tr.compare-total td {
+  font-weight: 700;
+  border-bottom: 0;
+}
+
+.compare-detail {
+  margin-top: 1.25rem;
+}
+
+.compare-detail h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+}
+
+.compare-origin {
+  margin: 0 0 0.25rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+
+.compare-post {
+  margin: 0.35rem 0 0;
+  font-size: 0.88rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

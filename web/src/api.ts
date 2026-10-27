@@ -111,6 +111,50 @@ export function fetchSummary() {
   return request<Summary>('/analytics/summary');
 }
 
+export interface CompareAccount {
+  id: string;
+  name: string;
+  instagramHandle: string | null;
+}
+
+export interface CompareRow {
+  category: string;
+  counts: Record<string, number>;
+}
+
+export interface CompareResult {
+  accounts: CompareAccount[];
+  categories: CompareRow[];
+}
+
+export function fetchCompare(ids: string[]) {
+  const query = new URLSearchParams({ ids: ids.join(',') });
+  return request<CompareResult>(`/analytics/compare?${query.toString()}`);
+}
+
+export interface CompareComment {
+  id: string;
+  text: string;
+  emojis: string[];
+  sentiment: string;
+  isAnonymized: boolean;
+  publishedAt: string | null;
+  post: {
+    caption: string | null;
+    url: string | null;
+    ownerUsername: string | null;
+  };
+}
+
+export function fetchCompareComments(tenantId: string, category: string) {
+  const query = new URLSearchParams({ tenantId, category });
+  return request<{
+    account: CompareAccount;
+    category: string;
+    items: CompareComment[];
+  }>(`/analytics/compare/comments?${query.toString()}`);
+}
+
 export interface CommentRow {
   id: string;
   cleanText: string;

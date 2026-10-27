@@ -30,6 +30,7 @@ import {
   SENTIMENT_LABEL,
   STATUS_LABEL,
 } from './labels';
+import { ComparePage } from './Compare';
 import {
   IconAccounts,
   IconAt,
@@ -47,7 +48,7 @@ import {
 } from './icons';
 
 type Tab = 'resumen' | 'publicaciones' | 'referencias';
-type Screen = 'home' | 'settings' | 'profile' | 'accounts';
+type Screen = 'home' | 'settings' | 'profile' | 'accounts' | 'compare';
 
 function slugFromName(name: string): string {
   return name
@@ -415,6 +416,16 @@ function Dashboard({
           La Escucha
         </button>
         <div className="app-bar-right">
+          {canSwitchTenant ? (
+            <button
+              type="button"
+              className={`icon-btn${screen === 'compare' ? ' active' : ''}`}
+              onClick={() => setScreen('compare')}
+            >
+              <IconChart size={18} />
+              Comparar
+            </button>
+          ) : null}
           {canSwitchTenant && liveTenants.length > 0 ? (
             <AccountSwitch
               tenants={liveTenants}
@@ -503,6 +514,9 @@ function Dashboard({
               }
             }}
           />
+        ) : null}
+        {screen === 'compare' && canSwitchTenant ? (
+          <ComparePage tenants={liveTenants} />
         ) : null}
         {screen === 'home' ? (
           <>

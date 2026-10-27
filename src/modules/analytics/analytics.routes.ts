@@ -8,7 +8,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma';
-import { authenticate, resolveTenantId } from '../../middlewares/auth';
+import { authenticate, authorize, resolveTenantId } from '../../middlewares/auth';
+import { ValidationError, NotFoundError } from '../../shared/errors';
+import { buildCompareRows, COMPARE_THEMES } from './compare';
 
 const CommentsQuerySchema = z.object({
   category: z
@@ -159,4 +161,111 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
       })),
     };
   });
+
+  // Comparación entre cuentas. Solo quien administra todas.
+  // Los comentarios no se copian: se leen en el tenant donde se guardaron.
+  app.get(
+    '/analytics/compare',
+    { preHandler: authorize('SUPER_ADMIN') },
+    async (request) => {
+      const { ids: rawIds } = z
+        .object({ ids: z.string().optional().default('') })
+        .parse(request.query);
+      const ids = [
+        ...new Set(
+          rawIds
+            .split(',')
+            .map((id) => id.trim())
+            .filter(Boolean),
+        ),
+      ];
+      const parsed = z.array(z.string().uuid()).max(12).safeParse(ids);
+      if (!parsed.success) {
+        throw new ValidationError('Las cuentas a comparar no son válidas.');
+      }
+
+      if (parsed.data.length === 0) {
+        return { accounts: [], categories: buildCompareRows([], []) };
+      }
+
+      const accounts = await prisma.tenant.findMany({
+        where: { id: { in: parsed.data }, isActive: true },
+        select: { id: true, name: true, instagramHandle: true },
+        orderBy: { name: 'asc' },
+      });
+      const accountIds = accounts.map((account) => account.id);
+      const grouped = await prisma.comment.groupBy({
+        by: ['tenantId', 'category'],
+        where: { tenantId: { in: accountIds } },
+        _count: { _all: true },
+      });
+
+      return {
+        accounts,
+        categories: buildCompareRows(
+          accountIds,
+          grouped.map((row) => ({
+            tenantId: row.tenantId,
+            category: row.category,
+            count: row._count._all,
+          })),
+        ),
+      };
+    },
+  );
+
+  app.get(
+    '/analytics/compare/comments',
+    { preHandler: authorize('SUPER_ADMIN') },
+    async (request) => {
+      const { tenantId, category } = z
+        .object({
+          tenantId: z.string().uuid(),
+          category: z.enum(COMPARE_THEMES),
+        })
+        .parse(request.query);
+
+      const tenant = await prisma.tenant.findFirst({
+        where: { id: tenantId, isActive: true },
+        select: { id: true, name: true, instagramHandle: true },
+      });
+      if (!tenant) throw new NotFoundError('Esa cuenta no está disponible.');
+
+      const items = await prisma.comment.findMany({
+        where: { tenantId, category },
+        orderBy: { publishedAt: 'desc' },
+        take: 40,
+        select: {
+          id: true,
+          rawText: true,
+          cleanText: true,
+          emojis: true,
+          sentiment: true,
+          isAnonymized: true,
+          publishedAt: true,
+          post: {
+            select: { caption: true, url: true, authorRef: true },
+          },
+        },
+      });
+
+      return {
+        account: tenant,
+        category,
+        items: items.map((row) => ({
+          id: row.id,
+          text: row.rawText?.trim() || row.cleanText,
+          emojis: row.emojis,
+          sentiment: row.sentiment,
+          isAnonymized: row.isAnonymized,
+          publishedAt: row.publishedAt,
+          post: {
+            caption: row.post.caption,
+            url: row.post.url,
+            ownerUsername: row.post.authorRef,
+          },
+        })),
+      };
+    },
+  );
 }
