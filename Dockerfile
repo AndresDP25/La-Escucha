@@ -16,6 +16,7 @@ RUN npm install
 COPY . .
 RUN npx prisma generate
 RUN npm run build
+RUN npm install --prefix web && npm run build --prefix web
 
 # --- Etapa de runtime ---
 FROM node:20-bookworm-slim AS runner
@@ -23,7 +24,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends openssl ca-certificates postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 # Solo dependencias de produccion
@@ -32,6 +33,7 @@ RUN npm install --omit=dev
 
 # Artefactos compilados y cliente de Prisma generado
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/web/dist ./web/dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/prisma ./prisma
 

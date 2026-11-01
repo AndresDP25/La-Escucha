@@ -4,6 +4,8 @@
  * Separar `build` de `start` facilita los tests de integracion (se puede
  * instanciar la app sin abrir un puerto).
  */
+import { access } from 'node:fs/promises';
+import path from 'node:path';
 import Fastify, {
   type FastifyInstance,
   type FastifyBaseLogger,
@@ -11,6 +13,7 @@ import Fastify, {
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
 import { logger } from './config/logger';
 import { errorHandler } from './middlewares/error-handler';
 
@@ -22,6 +25,7 @@ import { tenantsRoutes } from './modules/tenants/tenants.routes';
 import { analyticsRoutes } from './modules/analytics/analytics.routes';
 import { watchlistRoutes } from './modules/watchlist/watchlist.routes';
 import { scrapingRoutes } from './modules/scraping/scraping.routes';
+import { bootstrapRoutes } from './modules/bootstrap/bootstrap.routes';
 
 export async function buildApp(): Promise<FastifyInstance> {
   // Casteamos el logger de pino a FastifyBaseLogger para que el tipo de la
@@ -62,6 +66,22 @@ export async function buildApp(): Promise<FastifyInstance> {
   // --- Manejo de errores global ---
   app.setErrorHandler(errorHandler);
 
+  // El dashboard llama a /api/...; la API escucha sin ese prefijo.
+  app.addHook('onRequest', async (request) => {
+    const url = request.raw.url ?? '';
+    if (url === '/api' || url.startsWith('/api/') || url.startsWith('/api?')) {
+      request.raw.url = url.replace(/^\/api/, '') || '/';
+    }
+  });
+
+  app.addContentTypeParser(
+    'application/octet-stream',
+    { parseAs: 'buffer', bodyLimit: 80 * 1024 * 1024 },
+    (_req, body, done) => {
+      done(null, body);
+    },
+  );
+
   // --- Healthcheck ---
   app.get('/health', async () => ({ status: 'ok' }));
 
@@ -73,6 +93,21 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(analyticsRoutes);
   await app.register(watchlistRoutes);
   await app.register(scrapingRoutes);
+  await app.register(bootstrapRoutes);
+
+  const webRoot = path.join(process.cwd(), 'web', 'dist');
+  const hasWeb = await access(path.join(webRoot, 'index.html'))
+    .then(() => true)
+    .catch(() => false);
+  if (hasWeb) {
+    await app.register(fastifyStatic, { root: webRoot });
+    app.setNotFoundHandler((request, reply) => {
+      if (request.method === 'GET' && !request.url.startsWith('/api')) {
+        return reply.sendFile('index.html');
+      }
+      return reply.code(404).send({ error: 'No encontrado' });
+    });
+  }
 
   return app;
 }
