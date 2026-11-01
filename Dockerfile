@@ -5,7 +5,7 @@
 # ============================================================================
 
 # --- Etapa de build ---
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 # Instalar dependencias (incluye devDependencies para compilar)
@@ -18,9 +18,13 @@ RUN npx prisma generate
 RUN npm run build
 
 # --- Etapa de runtime ---
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 # Solo dependencias de produccion
 COPY package*.json ./
