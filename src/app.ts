@@ -66,14 +66,6 @@ export async function buildApp(): Promise<FastifyInstance> {
   // --- Manejo de errores global ---
   app.setErrorHandler(errorHandler);
 
-  // El dashboard llama a /api/...; la API escucha sin ese prefijo.
-  app.addHook('onRequest', async (request) => {
-    const url = request.raw.url ?? '';
-    if (url === '/api' || url.startsWith('/api/') || url.startsWith('/api?')) {
-      request.raw.url = url.replace(/^\/api/, '') || '/';
-    }
-  });
-
   app.addContentTypeParser(
     'application/octet-stream',
     { parseAs: 'buffer', bodyLimit: 80 * 1024 * 1024 },
@@ -85,15 +77,19 @@ export async function buildApp(): Promise<FastifyInstance> {
   // --- Healthcheck ---
   app.get('/health', async () => ({ status: 'ok' }));
 
-  // --- Rutas de dominio ---
-  await app.register(authRoutes);
-  await app.register(ingestionRoutes);
-  await app.register(keywordsRoutes);
-  await app.register(tenantsRoutes);
-  await app.register(analyticsRoutes);
-  await app.register(watchlistRoutes);
-  await app.register(scrapingRoutes);
-  await app.register(bootstrapRoutes);
+  // El dashboard llama a /api/... La API local, detras del proxy de Vite, no lleva ese prefijo.
+  const registerApi = async (scope: FastifyInstance): Promise<void> => {
+    await scope.register(authRoutes);
+    await scope.register(ingestionRoutes);
+    await scope.register(keywordsRoutes);
+    await scope.register(tenantsRoutes);
+    await scope.register(analyticsRoutes);
+    await scope.register(watchlistRoutes);
+    await scope.register(scrapingRoutes);
+    await scope.register(bootstrapRoutes);
+  };
+  await registerApi(app);
+  await app.register(registerApi, { prefix: '/api' });
 
   const webRoot = path.join(process.cwd(), 'web', 'dist');
   const hasWeb = await access(path.join(webRoot, 'index.html'))
