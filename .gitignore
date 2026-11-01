@@ -19,6 +19,9 @@ npm-debug.log*
 # Prisma (artefactos locales)
 prisma/*.db
 
+# Volcado de la base local. Tiene comentarios; no va al repo.
+sld.sql
+
 # Sistema operativo / editor
 .DS_Store
 Thumbs.db

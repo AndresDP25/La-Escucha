@@ -100,6 +100,8 @@ model Tenant {
   slug      String   @unique
   /// Perfil de Instagram de esta cuenta. Buscar trae posts solo de este usuario.
   instagramHandle String? @map("instagram_handle")
+  /// Usuario de Twitter/X. Buscar en esa pestaña trae tuits y respuestas.
+  twitterHandle String? @map("twitter_handle")
   /// Secreto compartido para validar la firma HMAC de los webhooks de este tenant.
   webhookSecret String @map("webhook_secret")
   /// Sal especifica del tenant usada para pseudonimizar autores de redes.
@@ -169,7 +171,9 @@ model ScrapeTarget {
 model WatchlistAccount {
   id        String          @id @default(uuid())
   tenantId  String          @map("tenant_id")
-  /// Username de Instagram, sin @, en minusculas.
+  /// instagram o twitter. Las referencias de una red no se mezclan con la otra.
+  network   String          @default("instagram")
+  /// Username, sin @, en minusculas.
   username  String
   reason    DiscoveryReason
   status    WatchlistStatus @default(PENDING)
@@ -180,7 +184,7 @@ model WatchlistAccount {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, username])
+  @@unique([tenantId, network, username])
   @@index([tenantId, status])
   @@map("watchlist_accounts")
 }

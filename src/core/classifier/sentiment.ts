@@ -11,6 +11,7 @@ const POSITIVE_WORDS = new Set([
   'gracias', 'excelente', 'buenisimo', 'genial', 'felicitaciones', 'bien',
   'bueno', 'buena', 'mejor', 'hermoso', 'barbaro', 'copado', 'perfecto',
   'agradezco', 'resuelto', 'solucionado', 'rapido', 'amable',
+  'ojala', 'fuerza',
 ]);
 
 const NEGATIVE_WORDS = new Set([
@@ -18,6 +19,8 @@ const NEGATIVE_WORDS = new Set([
   'nunca', 'inseguro', 'inseguridad', 'robo', 'robaron', 'peligro', 'peligroso',
   'roto', 'rota', 'abandonado', 'sucio', 'demora', 'lento', 'reclamo', 'queja',
   'bronca', 'indignante', 'corrupto', 'mentira', 'no funciona',
+  'decepcion', 'fraude', 'dictadura', 'dictatorial', 'traicion', 'infeliz',
+  'tibieza',
 ]);
 
 /** Analiza el sentimiento de un texto normalizado. */

@@ -10,6 +10,8 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma';
 import { authenticate, authorize, resolveTenantId } from '../../middlewares/auth';
 import { ValidationError, NotFoundError } from '../../shared/errors';
+import { createClassifier } from '../../core/classifier/classifier.factory';
+import { processText } from '../../core/text/text-processor';
 import { buildCompareRows, COMPARE_THEMES } from './compare';
 
 const CommentsQuerySchema = z.object({
@@ -127,9 +129,11 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
     const items = await prisma.post.findMany({
       where: { tenantId },
       orderBy: { publishedAt: 'desc' },
-      take: 50,
+      take: 100,
       select: {
         id: true,
+        network: true,
+        externalId: true,
         caption: true,
         url: true,
         authorRef: true,
@@ -138,6 +142,7 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
           orderBy: { publishedAt: 'desc' },
           select: {
             id: true,
+            rawText: true,
             cleanText: true,
             category: true,
             sentiment: true,
@@ -150,16 +155,49 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    return {
-      items: items.map((row) => ({
+    const hasTweets = items.some(
+      (row) => row.network === 'twitter' && row.caption?.trim() && !row.externalId.startsWith('replies-'),
+    );
+    const classifier = hasTweets
+      ? createClassifier(
+          await prisma.keywordConfig.findMany({
+            where: { tenantId, isActive: true },
+          }),
+        )
+      : null;
+
+    const mapped = [];
+    for (const row of items) {
+      let category: string | undefined;
+      let sentiment: string | undefined;
+      if (
+        classifier &&
+        row.network === 'twitter' &&
+        row.caption?.trim() &&
+        !row.externalId.startsWith('replies-')
+      ) {
+        const processed = processText(row.caption);
+        const result = await classifier.classify({
+          normalizedText: processed.normalized,
+          cleanText: processed.clean,
+        });
+        category = result.category;
+        sentiment = result.sentiment;
+      }
+      mapped.push({
         id: row.id,
+        network: row.network,
         caption: row.caption,
         url: row.url,
         ownerUsername: row.authorRef,
         publishedAt: row.publishedAt,
+        category,
+        sentiment,
         comments: row.comments,
-      })),
-    };
+      });
+    }
+
+    return { items: mapped };
   });
 
   // Comparación entre cuentas. Solo quien administra todas.
@@ -168,8 +206,11 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
     '/analytics/compare',
     { preHandler: authorize('SUPER_ADMIN') },
     async (request) => {
-      const { ids: rawIds } = z
-        .object({ ids: z.string().optional().default('') })
+      const { ids: rawIds, network } = z
+        .object({
+          ids: z.string().optional().default(''),
+          network: z.enum(['instagram', 'twitter']).optional(),
+        })
         .parse(request.query);
       const ids = [
         ...new Set(
@@ -190,13 +231,16 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
 
       const accounts = await prisma.tenant.findMany({
         where: { id: { in: parsed.data }, isActive: true },
-        select: { id: true, name: true, instagramHandle: true },
+        select: { id: true, name: true, instagramHandle: true, twitterHandle: true },
         orderBy: { name: 'asc' },
       });
       const accountIds = accounts.map((account) => account.id);
       const grouped = await prisma.comment.groupBy({
         by: ['tenantId', 'category'],
-        where: { tenantId: { in: accountIds } },
+        where: {
+          tenantId: { in: accountIds },
+          ...(network ? { post: { network } } : {}),
+        },
         _count: { _all: true },
       });
 
@@ -218,21 +262,26 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
     '/analytics/compare/comments',
     { preHandler: authorize('SUPER_ADMIN') },
     async (request) => {
-      const { tenantId, category } = z
+      const { tenantId, category, network } = z
         .object({
           tenantId: z.string().uuid(),
           category: z.enum(COMPARE_THEMES),
+          network: z.enum(['instagram', 'twitter']).optional(),
         })
         .parse(request.query);
 
       const tenant = await prisma.tenant.findFirst({
         where: { id: tenantId, isActive: true },
-        select: { id: true, name: true, instagramHandle: true },
+        select: { id: true, name: true, instagramHandle: true, twitterHandle: true },
       });
       if (!tenant) throw new NotFoundError('Esa cuenta no está disponible.');
 
       const items = await prisma.comment.findMany({
-        where: { tenantId, category },
+        where: {
+          tenantId,
+          category,
+          ...(network ? { post: { network } } : {}),
+        },
         orderBy: { publishedAt: 'desc' },
         take: 40,
         select: {

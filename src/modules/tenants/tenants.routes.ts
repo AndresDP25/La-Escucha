@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma';
 import { authenticate, authorize } from '../../middlewares/auth';
 import { ConflictError, NotFoundError, ValidationError } from '../../shared/errors';
-import { normalizeHandle } from '../scraping/scraping.service';
+import { normalizeHandle, normalizeTwitterHandle } from '../scraping/scraping.service';
 
 const CreateTenantSchema = z.object({
   name: z.string().min(1),
@@ -19,11 +19,18 @@ const CreateTenantSchema = z.object({
     .min(2)
     .regex(/^[a-z0-9-]+$/, 'slug: solo minusculas, numeros y guiones'),
   instagram: z.string().trim().min(1).max(200),
+  twitter: z.string().trim().max(200).optional(),
 });
 
-const PatchTenantSchema = z.object({
-  isActive: z.boolean(),
-});
+const PatchTenantSchema = z
+  .object({
+    isActive: z.boolean().optional(),
+    instagram: z.string().trim().min(1).max(200).optional(),
+    twitter: z.string().trim().max(200).nullable().optional(),
+  })
+  .refine((value) => value.isActive !== undefined || value.twitter !== undefined || value.instagram !== undefined, {
+    message: 'Nada para actualizar',
+  });
 
 export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authenticate);
@@ -36,6 +43,7 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
       name: true,
       slug: true,
       instagramHandle: true,
+      twitterHandle: true,
       isActive: true,
       createdAt: true,
     } as const;
@@ -55,8 +63,12 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/tenants', { preHandler: authorize('SUPER_ADMIN') }, async (request, reply) => {
-    const { name, slug, instagram } = CreateTenantSchema.parse(request.body);
+    const { name, slug, instagram, twitter } = CreateTenantSchema.parse(request.body);
     const instagramHandle = normalizeHandle(instagram);
+    const twitterHandle = twitter ? normalizeTwitterHandle(twitter) : null;
+    if (twitter && !twitterHandle) {
+      throw new ValidationError('El Twitter tiene que ser un usuario, por ejemplo proargentina.');
+    }
     if (!instagramHandle) {
       throw new ValidationError(
         'El Instagram tiene que ser un usuario, por ejemplo sanfermunicipio.',
@@ -78,6 +90,7 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
         name,
         slug,
         instagramHandle,
+        twitterHandle,
         webhookSecret: randomBytes(32).toString('hex'),
         anonymizationSalt: randomBytes(16).toString('hex'),
       },
@@ -87,6 +100,7 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
         name: true,
         slug: true,
         instagramHandle: true,
+        twitterHandle: true,
         isActive: true,
         webhookSecret: true,
       },
@@ -98,17 +112,41 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
     '/tenants/:id',
     { preHandler: authorize('SUPER_ADMIN') },
     async (request) => {
-      const { isActive } = PatchTenantSchema.parse(request.body);
+      const body = PatchTenantSchema.parse(request.body);
       const { id } = request.params;
       const existing = await prisma.tenant.findUnique({
         where: { id },
         select: { id: true },
       });
       if (!existing) throw new NotFoundError('Cuenta no encontrada');
+      const twitterHandle =
+        body.twitter === undefined
+          ? undefined
+          : body.twitter
+            ? normalizeTwitterHandle(body.twitter)
+            : null;
+      if (body.twitter && !twitterHandle) {
+        throw new ValidationError('El Twitter tiene que ser un usuario, por ejemplo proargentina.');
+      }
+      const instagramHandle = body.instagram ? normalizeHandle(body.instagram) : undefined;
+      if (body.instagram && !instagramHandle) {
+        throw new ValidationError('El Instagram tiene que ser un usuario, por ejemplo proargentina.');
+      }
       return prisma.tenant.update({
         where: { id },
-        data: { isActive },
-        select: { id: true, name: true, slug: true, instagramHandle: true, isActive: true },
+        data: {
+          ...(body.isActive === undefined ? {} : { isActive: body.isActive }),
+          ...(instagramHandle === undefined ? {} : { instagramHandle }),
+          ...(twitterHandle === undefined ? {} : { twitterHandle }),
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          instagramHandle: true,
+          twitterHandle: true,
+          isActive: true,
+        },
       });
     },
   );

@@ -59,9 +59,10 @@ export async function processIngestionEvent(
     });
     const classifier = createClassifier(keywords);
 
+    const network = payload.network ?? 'instagram';
     let commentsProcessed = 0;
     for (const rawPost of payload.posts) {
-      const post = await upsertPost(event.tenantId, rawPost);
+      const post = await upsertPost(event.tenantId, rawPost, network);
 
       for (const rawComment of rawPost.comments) {
         // 1) Limpieza de texto.
@@ -152,10 +153,11 @@ export async function processIngestionEvent(
 async function upsertPost(
   tenantId: string,
   rawPost: RawPost,
+  network: 'instagram' | 'twitter',
 ): Promise<{ id: string }> {
   const data: Prisma.PostUncheckedCreateInput = {
     tenantId,
-    network: 'instagram',
+    network,
     externalId: rawPost.id,
     url: rawPost.url ?? null,
     authorRef: rawPost.ownerUsername ?? null,
@@ -168,7 +170,7 @@ async function upsertPost(
     where: {
       tenantId_network_externalId: {
         tenantId,
-        network: 'instagram',
+        network,
         externalId: rawPost.id,
       },
     },

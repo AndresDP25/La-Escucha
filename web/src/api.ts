@@ -50,6 +50,7 @@ export interface TenantOption {
   name: string;
   slug: string;
   instagramHandle?: string | null;
+  twitterHandle?: string | null;
   isActive?: boolean;
 }
 
@@ -79,17 +80,25 @@ export function fetchTenants() {
   return request<TenantOption[]>('/tenants');
 }
 
-export function createTenant(name: string, slug: string, instagram: string) {
+export function createTenant(
+  name: string,
+  slug: string,
+  instagram: string,
+  twitter?: string,
+) {
   return request<TenantOption>('/tenants', {
     method: 'POST',
-    body: JSON.stringify({ name, slug, instagram }),
+    body: JSON.stringify({ name, slug, instagram, twitter: twitter || undefined }),
   });
 }
 
-export function patchTenant(id: string, isActive: boolean) {
+export function patchTenant(
+  id: string,
+  body: { isActive?: boolean; instagram?: string; twitter?: string | null },
+) {
   return request<TenantOption>(`/tenants/${id}`, {
     method: 'PATCH',
-    body: JSON.stringify({ isActive }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -115,6 +124,7 @@ export interface CompareAccount {
   id: string;
   name: string;
   instagramHandle: string | null;
+  twitterHandle?: string | null;
 }
 
 export interface CompareRow {
@@ -127,8 +137,9 @@ export interface CompareResult {
   categories: CompareRow[];
 }
 
-export function fetchCompare(ids: string[]) {
+export function fetchCompare(ids: string[], network?: 'instagram' | 'twitter') {
   const query = new URLSearchParams({ ids: ids.join(',') });
+  if (network) query.set('network', network);
   return request<CompareResult>(`/analytics/compare?${query.toString()}`);
 }
 
@@ -146,8 +157,13 @@ export interface CompareComment {
   };
 }
 
-export function fetchCompareComments(tenantId: string, category: string) {
+export function fetchCompareComments(
+  tenantId: string,
+  category: string,
+  network?: 'instagram' | 'twitter',
+) {
   const query = new URLSearchParams({ tenantId, category });
+  if (network) query.set('network', network);
   return request<{
     account: CompareAccount;
     category: string;
@@ -179,6 +195,7 @@ export function fetchComments() {
 
 export interface PostComment {
   id: string;
+  rawText?: string | null;
   cleanText: string;
   category: string;
   sentiment: string;
@@ -190,10 +207,13 @@ export interface PostComment {
 
 export interface PostRow {
   id: string;
+  network?: string;
   caption: string | null;
   url: string | null;
   ownerUsername: string | null;
   publishedAt: string | null;
+  category?: string;
+  sentiment?: string;
   comments: PostComment[];
 }
 
@@ -204,9 +224,12 @@ export function fetchPosts() {
 export interface WatchlistRow {
   id: string;
   username: string;
+  network?: string;
   reason: string;
   status: string;
   lastSeenAt: string;
+  commentCount: number;
+  lastActiveAt: string;
 }
 
 export function fetchWatchlist() {
@@ -222,6 +245,8 @@ export function patchWatchlist(id: string, status: string) {
 
 export interface ScrapeTargets {
   accounts: string[];
+  instagram: string | null;
+  twitter: string | null;
   apifyConfigured: boolean;
 }
 
@@ -237,9 +262,9 @@ export interface ScrapeRunResult {
   duplicated: boolean;
 }
 
-export function runScrape(resultsPerAccount: number) {
+export function runScrape(resultsPerAccount: number, network: 'instagram' | 'twitter') {
   return request<ScrapeRunResult>('/scrape/run', {
     method: 'POST',
-    body: JSON.stringify({ resultsPerAccount }),
+    body: JSON.stringify({ resultsPerAccount, network }),
   });
 }

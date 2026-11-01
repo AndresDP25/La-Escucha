@@ -7,7 +7,8 @@ import { env } from '../../config/env';
 import { AppError } from '../../shared/errors';
 
 const API = 'https://api.apify.com/v2';
-const ACTOR = 'apify~instagram-scraper';
+const INSTAGRAM_ACTOR = 'apify~instagram-scraper';
+const TWITTER_ACTOR = 'apidojo~tweet-scraper';
 /** Techo por clic, para no comerse el credito gratis. */
 export const MAX_CHARGE_USD = 0.05;
 const POLL_MS = 3000;
@@ -63,21 +64,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Corre el scraper de posts y devuelve el array crudo del dataset. */
-export async function scrapeInstagramPosts(
-  urls: string[],
-  resultsLimit: number,
+async function runActor(
+  actor: string,
+  input: unknown,
 ): Promise<{ runId: string; items: unknown[] }> {
   const params = new URLSearchParams({
     maxTotalChargeUsd: String(MAX_CHARGE_USD),
   });
-  let run = await apify<ApifyRun>(`/acts/${ACTOR}/runs?${params}`, {
+  let run = await apify<ApifyRun>(`/acts/${actor}/runs?${params}`, {
     method: 'POST',
-    body: JSON.stringify({
-      directUrls: urls,
-      resultsType: 'posts',
-      resultsLimit,
-    }),
+    body: JSON.stringify(input),
   });
 
   const deadline = Date.now() + DEADLINE_MS;
@@ -102,4 +98,28 @@ export async function scrapeInstagramPosts(
     `/datasets/${run.defaultDatasetId}/items?clean=true`,
   );
   return { runId: run.id, items: Array.isArray(items) ? items : [] };
+}
+
+/** Corre el scraper de posts y devuelve el array crudo del dataset. */
+export async function scrapeInstagramPosts(
+  urls: string[],
+  resultsLimit: number,
+): Promise<{ runId: string; items: unknown[] }> {
+  return runActor(INSTAGRAM_ACTOR, {
+    directUrls: urls,
+    resultsType: 'posts',
+    resultsLimit,
+  });
+}
+
+/** Tuiteos propios y respuestas al usuario. El tope de gasto es el mismo que Instagram. */
+export async function scrapeTweets(
+  handle: string,
+  resultsLimit: number,
+): Promise<{ runId: string; items: unknown[] }> {
+  return runActor(TWITTER_ACTOR, {
+    searchTerms: [`from:${handle}`, `to:${handle}`],
+    maxItems: resultsLimit * 2,
+    sort: 'Latest',
+  });
 }

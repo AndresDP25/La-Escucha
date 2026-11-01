@@ -40,6 +40,8 @@ export const IngestionPayloadSchema = z.object({
   externalId: z.string().min(1),
   /** Origen del dato. */
   source: z.string().default('apify'),
+  /** Red de los posts de este lote. */
+  network: z.enum(['instagram', 'twitter']).default('instagram'),
   /** Lista de posts scrapeados. */
   posts: z.array(RawPostSchema).min(1),
 });

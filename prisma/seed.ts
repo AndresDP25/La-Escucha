@@ -14,6 +14,7 @@
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
+import { PARTY_KEYWORDS } from '../src/core/classifier/party-keywords';
 
 const prisma = new PrismaClient();
 
@@ -194,6 +195,14 @@ async function main(): Promise<void> {
 
   await seedKeywords(sanFernando.id, SAN_FERNANDO_KEYWORDS);
   await seedKeywords(agus.id, CIARLETTA_KEYWORDS);
+
+  for (const slug of ['pro-argentina', 'pro-ciudad']) {
+    const party = await prisma.tenant.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+    if (party) await seedKeywords(party.id, PARTY_KEYWORDS);
+  }
 
   // eslint-disable-next-line no-console
   console.log('✅ Seed completado.');

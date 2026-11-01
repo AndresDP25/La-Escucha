@@ -138,6 +138,14 @@ export function IconAccounts(props: IconProps) {
   );
 }
 
+export function IconTwitter(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 5l14 14M19 5L5 19" />
+    </Svg>
+  );
+}
+
 export function IconInstagram(props: IconProps) {
   return (
     <Svg {...props}>

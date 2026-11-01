@@ -5,6 +5,7 @@
  * pase a WATCHING (ahi se crea un ScrapeTarget). Asi la lista no explota.
  */
 import type { DiscoveryReason, WatchlistStatus } from '@prisma/client';
+import { pseudonymizeAuthor } from '../../core/privacy/anonymizer';
 import { prisma } from '../../db/prisma';
 import type { DiscoveredAccount } from '../ingestion/apify.mapper';
 
@@ -18,6 +19,7 @@ const REASON_MAP: Record<DiscoveredAccount['reason'], DiscoveryReason> = {
 export async function upsertDiscoveredAccounts(
   tenantId: string,
   accounts: DiscoveredAccount[],
+  network: 'instagram' | 'twitter' = 'instagram',
 ): Promise<number> {
   let count = 0;
   for (const account of accounts) {
@@ -25,9 +27,10 @@ export async function upsertDiscoveredAccounts(
     if (!username) continue;
 
     await prisma.watchlistAccount.upsert({
-      where: { tenantId_username: { tenantId, username } },
+      where: { tenantId_network_username: { tenantId, network, username } },
       create: {
         tenantId,
+        network,
         username,
         reason: REASON_MAP[account.reason],
         status: 'PENDING',
@@ -48,10 +51,88 @@ export async function listWatchlist(
   tenantId: string,
   status?: WatchlistStatus,
 ) {
-  return prisma.watchlistAccount.findMany({
-    where: { tenantId, ...(status ? { status } : {}) },
-    orderBy: { lastSeenAt: 'desc' },
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { anonymizationSalt: true, instagramHandle: true, twitterHandle: true },
   });
+  const own = new Set(
+    [tenant?.instagramHandle, tenant?.twitterHandle]
+      .filter((handle): handle is string => Boolean(handle))
+      .map((handle) => handle.trim().replace(/^@/, '').toLowerCase()),
+  );
+
+  const accounts = await prisma.watchlistAccount.findMany({
+    where: {
+      tenantId,
+      reason: 'COMMENT_AUTHOR',
+      ...(status ? { status } : {}),
+    },
+  });
+  const commenters = accounts.filter((account) => !own.has(account.username));
+
+  const activity = await commentActivity(
+    tenantId,
+    tenant?.anonymizationSalt ?? null,
+    commenters,
+  );
+
+  return commenters
+    .map((account) => {
+      const stats = activity.get(`${account.network}:${account.username}`);
+      const lastActiveAt = stats?.last ?? account.lastSeenAt;
+      return {
+        ...account,
+        commentCount: stats?.count ?? 0,
+        lastActiveAt,
+      };
+    })
+    .sort((a, b) => {
+      if (b.commentCount !== a.commentCount) return b.commentCount - a.commentCount;
+      return b.lastActiveAt.getTime() - a.lastActiveAt.getTime();
+    });
+}
+
+async function commentActivity(
+  tenantId: string,
+  salt: string | null,
+  accounts: { network: string; username: string }[],
+) {
+  const resolved = new Map<string, { count: number; last: Date | null }>();
+  if (!salt || accounts.length === 0) return resolved;
+
+  const networks = ['instagram', 'twitter'] as const;
+  const grouped = await Promise.all(
+    networks.map((network) =>
+      prisma.comment.groupBy({
+        by: ['authorHash'],
+        where: {
+          tenantId,
+          authorHash: { not: null },
+          post: { network },
+        },
+        _count: { _all: true },
+        _max: { publishedAt: true },
+      }),
+    ),
+  );
+
+  const byHash = new Map<string, { count: number; last: Date | null }>();
+  networks.forEach((network, index) => {
+    for (const row of grouped[index] ?? []) {
+      if (!row.authorHash) continue;
+      byHash.set(`${network}:${row.authorHash}`, {
+        count: row._count._all,
+        last: row._max.publishedAt,
+      });
+    }
+  });
+
+  for (const account of accounts) {
+    const hash = pseudonymizeAuthor(account.username, salt);
+    const stats = byHash.get(`${account.network}:${hash}`);
+    if (stats) resolved.set(`${account.network}:${account.username}`, stats);
+  }
+  return resolved;
 }
 
 export async function setWatchlistStatus(

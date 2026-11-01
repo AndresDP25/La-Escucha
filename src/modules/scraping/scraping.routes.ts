@@ -21,6 +21,7 @@ const BodySchema = z.object({
     .min(RESULTS_MIN)
     .max(RESULTS_MAX)
     .default(RESULTS_DEFAULT),
+  network: z.enum(['instagram', 'twitter']).default('instagram'),
 });
 
 export async function scrapingRoutes(app: FastifyInstance): Promise<void> {
@@ -31,8 +32,13 @@ export async function scrapingRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [authorize('ADMIN', 'SUPER_ADMIN', 'OPERATOR')] },
     async (request) => {
       const tenantId = resolveTenantId(request);
-      const accounts = await listSearchAccounts(tenantId);
-      return { accounts, apifyConfigured: apifyConfigured() };
+      const handles = await listSearchAccounts(tenantId);
+      return {
+        accounts: handles.instagram ? [handles.instagram] : [],
+        instagram: handles.instagram,
+        twitter: handles.twitter,
+        apifyConfigured: apifyConfigured(),
+      };
     },
   );
 
@@ -41,8 +47,8 @@ export async function scrapingRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [authorize('ADMIN', 'SUPER_ADMIN', 'OPERATOR')] },
     async (request) => {
       const tenantId = resolveTenantId(request);
-      const { resultsPerAccount } = BodySchema.parse(request.body ?? {});
-      return runTenantSearch(tenantId, resultsPerAccount);
+      const { resultsPerAccount, network } = BodySchema.parse(request.body ?? {});
+      return runTenantSearch(tenantId, resultsPerAccount, network);
     },
   );
 }

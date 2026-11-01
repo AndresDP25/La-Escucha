@@ -13,7 +13,6 @@ import {
   getToken,
   getUser,
   login,
-  patchWatchlist,
   runScrape,
   setActiveTenantId,
   setSession,
@@ -23,14 +22,11 @@ import {
   type TenantOption,
   type WatchlistRow,
 } from './api';
-import {
-  CATEGORY_LABEL,
-  REASON_LABEL,
-  ROLE_LABEL,
-  SENTIMENT_LABEL,
-  STATUS_LABEL,
-} from './labels';
+import { CATEGORY_LABEL, ROLE_LABEL, SENTIMENT_LABEL } from './labels';
+import { AccountLogo } from './logos';
 import { ComparePage } from './Compare';
+import { Reading } from './Reading';
+import { SuggestionsPanel } from './Suggestions';
 import {
   IconAccounts,
   IconAt,
@@ -42,12 +38,13 @@ import {
   IconFeed,
   IconGear,
   IconInstagram,
+  IconTwitter,
   IconLogo,
   IconLogout,
   IconUser,
 } from './icons';
 
-type Tab = 'resumen' | 'publicaciones' | 'referencias';
+type Tab = 'resumen' | 'publicaciones' | 'sugerencias' | 'referencias';
 type Screen = 'home' | 'settings' | 'profile' | 'accounts' | 'compare';
 
 function slugFromName(name: string): string {
@@ -65,13 +62,22 @@ function canManageWatchlist(role: string): boolean {
 }
 
 function themeForSlug(slug: string | null | undefined): string {
-  return slug === 'agusciarletta' ? 'agusciarletta' : 'san-fernando';
+  if (slug === 'agusciarletta') return 'agusciarletta';
+  if (slug === 'pro-argentina' || slug === 'pro-ciudad') return 'pro';
+  return 'san-fernando';
 }
 
 function captionPreview(caption: string | null | undefined): string {
   if (!caption) return 'Sin texto';
   const oneLine = caption.replace(/\s+/g, ' ').trim();
   return oneLine.length > 140 ? `${oneLine.slice(0, 140)}…` : oneLine;
+}
+
+function profileUrl(network: string | undefined, username: string): string {
+  const handle = username.replace(/^@/, '');
+  return network === 'twitter'
+    ? `https://x.com/${handle}`
+    : `https://www.instagram.com/${handle}/`;
 }
 
 function formatWhen(iso: string | null | undefined): string {
@@ -98,31 +104,6 @@ function sentimentPill(sentiment: string): string {
   if (sentiment === 'POSITIVE') return 'pill pos';
   if (sentiment === 'NEGATIVE') return 'pill neg';
   return 'pill neu';
-}
-
-function BarList({
-  items,
-}: {
-  items: { label: string; count: number }[];
-}) {
-  const max = Math.max(...items.map((i) => i.count), 1);
-  if (items.length === 0) return <p className="muted">Sin datos</p>;
-  return (
-    <div className="bar-list">
-      {items.map((item) => (
-        <div className="bar-row" key={item.label}>
-          <span className="k">{item.label}</span>
-          <div className="bar-track">
-            <div
-              className="bar-fill"
-              style={{ width: `${Math.round((item.count / max) * 100)}%` }}
-            />
-          </div>
-          <span className="n">{item.count}</span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 export function App() {
@@ -218,14 +199,34 @@ function Login({ onOk }: { onOk: (user: SessionUser) => void }) {
   );
 }
 
+function emptyFeed(feed: 'instagram' | 'twitter'): string {
+  if (feed === 'twitter') {
+    return 'Esta cuenta todavía no tiene tweets. Cargá el usuario en Cuentas y apretá Buscar.';
+  }
+  return 'No hay publicaciones de Instagram en esta cuenta.';
+}
+
+function isTwitterUrl(url: string): boolean {
+  return /(?:^|\/\/)(?:www\.)?(?:twitter|x)\.com\//i.test(url);
+}
+
+function postLinkLabel(url: string): string {
+  return isTwitterUrl(url) ? 'Ver en Twitter' : 'Ver en Instagram';
+}
+
 function SearchBar({
   tenantId,
+  network,
   onDone,
 }: {
   tenantId: string;
+  network: 'instagram' | 'twitter';
   onDone: () => void;
 }) {
-  const [accounts, setAccounts] = useState<string[]>([]);
+  const [handles, setHandles] = useState<{ instagram: string | null; twitter: string | null }>({
+    instagram: null,
+    twitter: null,
+  });
   const [configured, setConfigured] = useState(true);
   const [limit, setLimit] = useState(5);
   const [busy, setBusy] = useState(false);
@@ -237,22 +238,24 @@ function SearchBar({
     void fetchScrapeTargets()
       .then((res) => {
         if (cancelled) return;
-        setAccounts(res.accounts);
+        setHandles({ instagram: res.instagram, twitter: res.twitter });
         setConfigured(res.apifyConfigured);
       })
       .catch(() => {
-        if (!cancelled) setAccounts([]);
+        if (!cancelled) setHandles({ instagram: null, twitter: null });
       });
     return () => {
       cancelled = true;
     };
   }, [tenantId]);
 
+  const handle = network === 'twitter' ? handles.twitter : handles.instagram;
+
   async function onSearch() {
     setBusy(true);
     setNote('Buscando… puede tardar un minuto.');
     try {
-      const res = await runScrape(limit);
+      const res = await runScrape(limit, network);
       if (res.posts === 0) {
         setNote('Apify no trajo publicaciones.');
       } else if (res.duplicated) {
@@ -270,10 +273,14 @@ function SearchBar({
     }
   }
 
-  const accountLabel =
-    accounts.length === 0
-      ? 'Esta cuenta no tiene un perfil de Instagram cargado.'
-      : `Posts de ${accounts.map((name) => (name.startsWith('@') ? name : `@${name}`)).join(', ')}.`;
+  const hint = !configured
+    ? 'Falta APIFY_TOKEN en el servidor.'
+    : !handle
+      ? network === 'twitter'
+        ? 'Esta cuenta no tiene un usuario de Twitter. Cargalo en Ajustes → Cuentas.'
+        : 'Esta cuenta no tiene un perfil de Instagram cargado.'
+      : '';
+  const message = [hint, note].filter(Boolean).join(' ');
 
   return (
     <div className="search-bar">
@@ -291,17 +298,12 @@ function SearchBar({
       <button
         type="button"
         className="btn"
-        disabled={busy || !configured || accounts.length === 0}
+        disabled={busy || !configured || !handle}
         onClick={() => void onSearch()}
       >
         {busy ? 'Buscando…' : 'Buscar'}
       </button>
-      <p className="search-note">
-        {configured
-          ? `${accountLabel} Cada búsqueda corta a los 0,05 USD.`
-          : 'Falta APIFY_TOKEN en el servidor.'}
-        {note ? ` ${note}` : ''}
-      </p>
+      {message ? <p className="search-note">{message}</p> : null}
     </div>
   );
 }
@@ -314,6 +316,7 @@ function Dashboard({
   onLogout: () => void;
 }) {
   const [tab, setTab] = useState<Tab>('resumen');
+  const [feed, setFeed] = useState<'instagram' | 'twitter'>('instagram');
   const [summary, setSummary] = useState<Summary | null>(null);
   const [posts, setPosts] = useState<PostRow[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistRow[]>([]);
@@ -322,6 +325,7 @@ function Dashboard({
     return getActiveTenantId() ?? user.tenantId ?? '';
   });
   const [openPosts, setOpenPosts] = useState<string[]>([]);
+  const [focusPostId, setFocusPostId] = useState<string | null>(null);
   const [screen, setScreen] = useState<Screen>('home');
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
@@ -363,6 +367,19 @@ function Dashboard({
   }, [user.tenantId]);
 
   useEffect(() => {
+    if (screen !== 'accounts') return;
+    let cancelled = false;
+    void fetchTenants()
+      .then((list) => {
+        if (!cancelled) setTenants(list);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [screen]);
+
+  useEffect(() => {
     if (!activeTenantId && canSwitchTenant) return;
     let cancelled = false;
     async function load() {
@@ -389,14 +406,25 @@ function Dashboard({
     };
   }, [activeTenantId, canSwitchTenant, reloadKey]);
 
-  const pending = useMemo(
-    () => watchlist.filter((a) => a.status === 'PENDING').length,
-    [watchlist],
+  const visibleWatchlist = useMemo(
+    () =>
+      watchlist
+        .filter((row) => (row.network ?? 'instagram') === feed)
+        .filter((row) => row.reason === 'COMMENT_AUTHOR'),
+    [watchlist, feed],
   );
+  const visiblePosts = posts.filter((post) => (post.network ?? 'instagram') === feed);
 
-  async function changeStatus(id: string, status: string) {
-    const updated = await patchWatchlist(id, status);
-    setWatchlist((rows) => rows.map((r) => (r.id === id ? updated : r)));
+  useEffect(() => {
+    if (tab !== 'publicaciones' || !focusPostId) return;
+    const node = document.getElementById(`post-${focusPostId}`);
+    node?.scrollIntoView({ block: 'start' });
+  }, [tab, focusPostId]);
+
+  function openInPublications(postId: string) {
+    setOpenPosts((current) => (current.includes(postId) ? current : [...current, postId]));
+    setFocusPostId(postId);
+    setTab('publicaciones');
   }
 
   return (
@@ -419,7 +447,7 @@ function Dashboard({
           {canSwitchTenant ? (
             <button
               type="button"
-              className={`icon-btn${screen === 'compare' ? ' active' : ''}`}
+              className={`icon-btn app-bar-compare${screen === 'compare' ? ' active' : ''}`}
               onClick={() => setScreen('compare')}
             >
               <IconChart size={18} />
@@ -522,12 +550,36 @@ function Dashboard({
           <>
         {error ? <p className="error">{error}</p> : null}
         <div className="page-head">
-          <h2>{activeAccount?.name ?? user.tenantName ?? 'Escucha'}</h2>
-          <p>Publicaciones, comentarios y cuentas que aparecen en el hilo.</p>
+          <div className="page-title">
+            <AccountLogo slug={activeAccount?.slug} size={52} />
+            <div>
+              <h2>{activeAccount?.name ?? user.tenantName ?? 'Escucha'}</h2>
+            </div>
+          </div>
+        </div>
+        <div className="net-switch" role="tablist" aria-label="Red">
+          {(
+            [
+              ['instagram', 'Instagram'],
+              ['twitter', 'Twitter'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={feed === id}
+              className={feed === id ? 'on' : ''}
+              onClick={() => setFeed(id)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
         {admin ? (
           <SearchBar
             tenantId={activeTenantId}
+            network={feed}
             onDone={() => setReloadKey((n) => n + 1)}
           />
         ) : null}
@@ -550,83 +602,73 @@ function Dashboard({
           </button>
           <button
             type="button"
+            className={tab === 'sugerencias' ? 'active' : ''}
+            onClick={() => setTab('sugerencias')}
+          >
+            <IconComment size={16} />
+            Sugerencias
+          </button>
+          <button
+            type="button"
             className={tab === 'referencias' ? 'active' : ''}
             onClick={() => setTab('referencias')}
           >
             <IconAt size={16} />
-            Referencias{pending ? ` (${pending})` : ''}
+            Activos{visibleWatchlist.length ? ` (${visibleWatchlist.length})` : ''}
           </button>
         </div>
 
-        {tab === 'resumen' && summary ? (
-          <>
-            <div className="cards">
-              <div className="card">
-                <div className="n">{summary.posts ?? posts.length}</div>
-                <div className="l">Publicaciones</div>
-              </div>
-              <div className="card">
-                <div className="n">{summary.total}</div>
-                <div className="l">Comentarios</div>
-              </div>
-              <div className="card">
-                <div className="n">{watchlist.length}</div>
-                <div className="l">Referencias</div>
-              </div>
-              <div className="card">
-                <div className="n">{pending}</div>
-                <div className="l">Sin decidir</div>
-              </div>
-            </div>
-            <div className="split">
-              <div className="card">
-                <strong>Por tema</strong>
-                <BarList
-                  items={summary.byCategory.map((r) => ({
-                    label: CATEGORY_LABEL[r.category] ?? r.category,
-                    count: r.count,
-                  }))}
-                />
-              </div>
-              <div className="card">
-                <strong>Por tono</strong>
-                <BarList
-                  items={summary.bySentiment.map((r) => ({
-                    label: SENTIMENT_LABEL[r.sentiment] ?? r.sentiment,
-                    count: r.count,
-                  }))}
-                />
-              </div>
-            </div>
-          </>
+        {tab === 'resumen' ? (
+          !summary && posts.length === 0 ? (
+            <p className="muted">Leyendo…</p>
+          ) : (
+            <Reading
+              posts={visiblePosts}
+              empty={emptyFeed(feed)}
+              onOpenPost={openInPublications}
+            />
+          )
+        ) : null}
+
+        {tab === 'sugerencias' ? (
+          !summary && posts.length === 0 ? (
+            <p className="muted">Leyendo…</p>
+          ) : (
+            <SuggestionsPanel
+              posts={visiblePosts}
+              empty={emptyFeed(feed)}
+              onOpenPost={openInPublications}
+            />
+          )
         ) : null}
 
         {tab === 'publicaciones' ? (
           <div className="post-list">
-            {posts.length === 0 ? (
-              <p className="muted">No hay publicaciones en esta cuenta.</p>
+            {visiblePosts.length === 0 ? (
+              <p className="muted">{emptyFeed(feed)}</p>
             ) : (
               <div className="post-toolbar">
-                <span className="muted">{posts.length} publicaciones</span>
+                <span className="muted">{visiblePosts.length} publicaciones</span>
                 <button
                   type="button"
                   className="btn small secondary"
                   onClick={() =>
                     setOpenPosts(
-                      openPosts.length === posts.length ? [] : posts.map((p) => p.id),
+                      openPosts.length === visiblePosts.length ? [] : visiblePosts.map((p) => p.id),
                     )
                   }
                 >
-                  {openPosts.length === posts.length ? 'Cerrar todas' : 'Abrir todas'}
+                  {openPosts.length === visiblePosts.length ? 'Cerrar todas' : 'Abrir todas'}
                 </button>
               </div>
             )}
-            {posts.map((post) => {
+            {visiblePosts.map((post) => {
               const open = openPosts.includes(post.id);
               return (
                 <article
                   key={post.id}
-                  className={`post-card${open ? ' open' : ''}`}
+                  id={`post-${post.id}`}
+                  className={`post-card${open ? ' open' : ''}${focusPostId === post.id ? ' target' : ''}`}
                 >
                   <button
                     type="button"
@@ -664,8 +706,12 @@ function Dashboard({
                       </p>
                       {post.url ? (
                         <a className="ig-link" href={post.url} target="_blank" rel="noreferrer">
-                          <IconInstagram size={15} />
-                          Ver en Instagram
+                          {isTwitterUrl(post.url) ? (
+                            <IconTwitter size={15} />
+                          ) : (
+                            <IconInstagram size={15} />
+                          )}
+                          {postLinkLabel(post.url)}
                         </a>
                       ) : null}
                       <div className="post-comments">
@@ -721,47 +767,46 @@ function Dashboard({
         {tab === 'referencias' ? (
           <>
           <p className="muted tab-help">
-            Cuentas de Instagram que salieron en los posts (comentaron, las
-            mencionaron o las etiquetaron). No se siguen solas: acá decidís si
-            pasarlas a monitoreo o dejarlas de lado.
+            {feed === 'twitter'
+              ? 'Cuentas que respondieron en Twitter y siguen activas. El perfil abre en la red para poder interactuar.'
+              : 'Cuentas que comentaron en Instagram y siguen activas. El perfil abre en la red para poder interactuar.'}
           </p>
-          <table>
+          <table className="active-people">
             <thead>
               <tr>
-                <th>Referencia</th>
-                <th>De dónde salió</th>
-                <th>Estado</th>
-                {admin ? <th></th> : null}
+                <th>Cuenta</th>
+                <th>Comentarios</th>
+                <th>Última vez</th>
+                <th>Perfil</th>
               </tr>
             </thead>
             <tbody>
-              {watchlist.map((a) => (
-                <tr key={a.id}>
-                  <td>@{a.username}</td>
-                  <td>{REASON_LABEL[a.reason] ?? a.reason}</td>
-                  <td>{STATUS_LABEL[a.status] ?? a.status}</td>
-                  {admin ? (
-                    <td>
-                      {a.status !== 'WATCHING' ? (
-                        <button
-                          type="button"
-                          className="btn small"
-                          onClick={() => void changeStatus(a.id, 'WATCHING')}
-                        >
-                          Monitorear
-                        </button>
-                      ) : null}{' '}
-                      {a.status !== 'IGNORED' ? (
-                        <button
-                          type="button"
-                          className="btn small secondary"
-                          onClick={() => void changeStatus(a.id, 'IGNORED')}
-                        >
-                          Ignorar
-                        </button>
-                      ) : null}
-                    </td>
-                  ) : null}
+              {visibleWatchlist.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="muted">
+                    {feed === 'twitter'
+                      ? 'Todavía no hay cuentas que hayan comentado en Twitter.'
+                      : 'Todavía no hay cuentas que hayan comentado en Instagram.'}
+                  </td>
+                </tr>
+              ) : null}
+              {visibleWatchlist.map((account) => (
+                <tr key={account.id}>
+                  <td>@{account.username}</td>
+                  <td className="num">
+                    {account.commentCount > 0 ? account.commentCount : '—'}
+                  </td>
+                  <td>{formatWhen(account.lastActiveAt ?? account.lastSeenAt)}</td>
+                  <td>
+                    <a
+                      className="ig-link"
+                      href={profileUrl(account.network ?? feed, account.username)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Abrir perfil
+                    </a>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -808,6 +853,7 @@ function AccountSwitch({
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
         >
+          <AccountLogo slug={current?.slug} size={22} />
           {current?.name ?? 'Elegí una cuenta'}
           <IconCaret open={open} size={14} />
         </button>
@@ -823,6 +869,7 @@ function AccountSwitch({
                     setOpen(false);
                   }}
                 >
+                  <AccountLogo slug={t.slug} size={22} />
                   {t.name}
                 </button>
               </li>
@@ -868,11 +915,83 @@ function SettingsHome({
             </span>
             <span className="settings-tile-copy">
               <strong>Cuentas</strong>
-              <span className="muted">Alta de Instagram / municipio</span>
+              <span className="muted">Instagram, Twitter y alta de cuentas</span>
             </span>
           </button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function AccountHandles({
+  tenant,
+  onUpdated,
+}: {
+  tenant: TenantOption;
+  onUpdated: (tenant: TenantOption) => void;
+}) {
+  const [instagram, setInstagram] = useState(tenant.instagramHandle ?? '');
+  const [twitter, setTwitter] = useState(tenant.twitterHandle ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setInstagram(tenant.instagramHandle ?? '');
+    setTwitter(tenant.twitterHandle ?? '');
+  }, [tenant.instagramHandle, tenant.twitterHandle]);
+
+  async function save() {
+    const nextIg = instagram.trim();
+    const nextTw = twitter.trim();
+    if (!nextIg) {
+      setError('Instagram es obligatorio.');
+      return;
+    }
+    if (nextIg === (tenant.instagramHandle ?? '') && nextTw === (tenant.twitterHandle ?? '')) return;
+    setBusy(true);
+    setError('');
+    try {
+      const updated = await patchTenant(tenant.id, {
+        instagram: nextIg,
+        twitter: nextTw || null,
+      });
+      onUpdated(updated);
+      setInstagram(updated.instagramHandle ?? '');
+      setTwitter(updated.twitterHandle ?? '');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="handle-fields">
+      <label>
+        Instagram
+        <input
+          value={instagram}
+          onChange={(e) => setInstagram(e.target.value)}
+          placeholder="proargentina"
+          aria-label={`Instagram de ${tenant.name}`}
+        />
+      </label>
+      <label>
+        Twitter
+        <span className="handle-row">
+          <input
+            value={twitter}
+            onChange={(e) => setTwitter(e.target.value)}
+            placeholder="proargentina"
+            aria-label={`Twitter de ${tenant.name}`}
+          />
+          <button type="button" className="btn small secondary" disabled={busy} onClick={() => void save()}>
+            {busy ? '…' : 'Guardar'}
+          </button>
+        </span>
+      </label>
+      {error ? <span className="error">{error}</span> : null}
     </div>
   );
 }
@@ -893,6 +1012,7 @@ function AccountsPage({
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [instagram, setInstagram] = useState('');
+  const [twitter, setTwitter] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
@@ -910,11 +1030,17 @@ function AccountsPage({
     setError('');
     setOk('');
     try {
-      const created = await createTenant(name.trim(), slug.trim(), instagram.trim());
+      const created = await createTenant(
+        name.trim(),
+        slug.trim(),
+        instagram.trim(),
+        twitter.trim() || undefined,
+      );
       onCreated(created);
       setName('');
       setSlug('');
       setInstagram('');
+      setTwitter('');
       setSlugTouched(false);
       setOk(
         `Lista “${created.name}”. Buscar trae posts de @${created.instagramHandle}.`,
@@ -939,7 +1065,7 @@ function AccountsPage({
     setTogglingId(tenant.id);
     setError('');
     try {
-      const updated = await patchTenant(tenant.id, next);
+      const updated = await patchTenant(tenant.id, { isActive: next });
       onUpdated(updated);
       setOk(next ? `Reactivada “${updated.name}”.` : `Inactiva “${updated.name}”.`);
     } catch (err) {
@@ -959,9 +1085,9 @@ function AccountsPage({
       </button>
       <h2>Cuentas</h2>
       <p className="muted settings-lead">
-        Cada cuenta es un municipio o una persona, y un perfil de Instagram.
-        Buscar trae los posts de ese perfil. Desactivar la saca del selector
-        sin borrar lo ya cargado.
+        Cada cuenta tiene un Instagram y, si lo cargás, un Twitter.
+        Buscar trae solo la red que estés mirando. Desactivar la saca del
+        selector sin borrar lo ya cargado.
       </p>
 
       <form className="card account-form" onSubmit={(e) => void onSubmit(e)}>
@@ -1001,6 +1127,16 @@ function AccountsPage({
         <p className="muted field-hint">
           El usuario, sin @. Al elegir esta cuenta, Buscar trae sus posts.
         </p>
+        <label htmlFor="tenant-twitter">Twitter (opcional)</label>
+        <input
+          id="tenant-twitter"
+          value={twitter}
+          onChange={(e) => setTwitter(e.target.value)}
+          placeholder="proargentina"
+        />
+        <p className="muted field-hint">
+          Usuario de X, sin @. Se puede cargar después en la lista.
+        </p>
         {error ? <p className="error">{error}</p> : null}
         {ok ? <p className="ok-msg">{ok}</p> : null}
         <p>
@@ -1025,15 +1161,14 @@ function AccountsPage({
               <li key={t.id} className={inactive ? 'inactive' : ''}>
                 <span className="account-catalog-copy">
                   <strong>
+                    <AccountLogo slug={t.slug} size={28} />
                     {t.name}
                     {t.id === activeTenantId && !inactive ? (
                       <span className="pill">Activa ahora</span>
                     ) : null}
                     {inactive ? <span className="pill dim">Inactiva</span> : null}
                   </strong>
-                  <span className="muted">
-                    {t.instagramHandle ? `@${t.instagramHandle}` : t.slug}
-                  </span>
+                  <AccountHandles tenant={t} onUpdated={onUpdated} />
                 </span>
                 <button
                   type="button"

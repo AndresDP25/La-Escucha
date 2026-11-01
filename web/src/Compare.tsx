@@ -7,6 +7,7 @@ import {
   type TenantOption,
 } from './api';
 import { CATEGORY_LABEL, SENTIMENT_LABEL } from './labels';
+import { AccountLogo } from './logos';
 
 const SELECTION_KEY = 'sld_compare_ids';
 
@@ -167,6 +168,7 @@ export function ComparePage({ tenants }: { tenants: TenantOption[] }) {
                 checked={selected?.includes(tenant.id) ?? false}
                 onChange={() => toggle(tenant.id)}
               />
+              <AccountLogo slug={tenant.slug} size={20} />
               {tenant.name}
             </label>
           );
@@ -185,10 +187,21 @@ export function ComparePage({ tenants }: { tenants: TenantOption[] }) {
                 <th>Tema</th>
                 {accounts.map((account) => (
                   <th key={account.id} className="num">
-                    <span className="compare-account">{account.name}</span>
-                    {account.instagramHandle ? (
-                      <span className="compare-handle">@{account.instagramHandle}</span>
-                    ) : null}
+                    <span className="compare-account">
+                      <AccountLogo
+                        slug={tenants.find((tenant) => tenant.id === account.id)?.slug}
+                        size={18}
+                      />
+                      <span className="compare-account-name">{account.name}</span>
+                    </span>
+                    {[account.instagramHandle, account.twitterHandle]
+                      .filter((handle): handle is string => Boolean(handle))
+                      .filter((handle, index, list) => list.indexOf(handle) === index)
+                      .map((handle) => (
+                        <span key={handle} className="compare-handle">
+                          @{handle}
+                        </span>
+                      ))}
                   </th>
                 ))}
               </tr>
