@@ -104,7 +104,7 @@ npm run dev:web
 ```
 
 Dashboard: [http://localhost:5173](http://localhost:5173)  
-Usuario: `admin@san-fernando.local` / `cambiar123`
+Los usuarios se crean en Ajustes → Usuarios.
 
 ### Mapear un export de Apify (sin gastar credito)
 

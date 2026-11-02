@@ -148,8 +148,8 @@ export function App() {
 }
 
 function Login({ onOk }: { onOk: (user: SessionUser) => void }) {
-  const [email, setEmail] = useState('superadmin@sld.local');
-  const [password, setPassword] = useState('cambiar123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
