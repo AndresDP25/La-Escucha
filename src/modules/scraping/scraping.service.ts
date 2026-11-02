@@ -4,13 +4,71 @@
  * otra cuenta busca el suyo.
  */
 import { prisma } from '../../db/prisma';
+import { analyzeSentiment } from '../../core/classifier/sentiment';
+import { normalizeText } from '../../core/text/text-processor';
 import { ValidationError } from '../../shared/errors';
 import { mapApifyDataset } from '../ingestion/apify.mapper';
+import type { RawPost } from '../ingestion/ingestion.schema';
 import { ingestPayload } from '../ingestion/ingestion.service';
 import { upsertDiscoveredAccounts } from '../watchlist/watchlist.service';
 import { processIngestionEvent } from '../processing/processing.service';
 import { mapTwitterDataset } from '../ingestion/twitter.mapper';
 import { apifyConfigured, scrapeInstagramPosts, scrapeTweets } from './apify.client';
+
+type Report = (text: string) => void;
+
+const STEP_GAP_MS = 350;
+
+function pause(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, STEP_GAP_MS));
+}
+
+async function say(report: Report, text: string): Promise<void> {
+  report(text);
+  await pause();
+}
+
+function postLabel(post: RawPost): string {
+  const caption = post.caption?.trim().replace(/\s+/g, ' ');
+  if (caption) return caption.length > 48 ? `${caption.slice(0, 48)}…` : caption;
+  return post.id.slice(-6);
+}
+
+function tally(post: RawPost): { positive: number; negative: number; neutral: number } {
+  const counts = { positive: 0, negative: 0, neutral: 0 };
+  for (const comment of post.comments) {
+    const sentiment = analyzeSentiment(normalizeText(comment.text));
+    if (sentiment === 'POSITIVE') counts.positive += 1;
+    else if (sentiment === 'NEGATIVE') counts.negative += 1;
+    else counts.neutral += 1;
+  }
+  return counts;
+}
+
+function commentLine(total: number, counts: { positive: number; negative: number; neutral: number }): string {
+  if (total === 0) return 'Esta publicación no tiene comentarios.';
+  const extracted = total === 1 ? 'Extraído 1 comentario' : `Extraídos ${total} comentarios`;
+  return `${extracted}: ${counts.positive} positivos, ${counts.negative} negativos y ${counts.neutral} neutros.`;
+}
+
+function profileNames(post: RawPost): string[] {
+  const names = new Set<string>();
+  for (const comment of post.comments) {
+    const name = comment.ownerUsername?.trim().replace(/^@/, '');
+    if (name) names.add(name);
+  }
+  return [...names].slice(0, 3);
+}
+
+async function narratePosts(posts: RawPost[], report: Report): Promise<void> {
+  for (const post of posts) {
+    await say(report, `Revisando publicación: ${postLabel(post)}`);
+    await say(report, commentLine(post.comments.length, tally(post)));
+    for (const name of profileNames(post)) {
+      await say(report, `Revisando perfil @${name}`);
+    }
+  }
+}
 
 export type SearchNetwork = 'instagram' | 'twitter';
 
@@ -67,10 +125,11 @@ export async function runTenantSearch(
   tenantId: string,
   resultsPerAccount: number,
   network: SearchNetwork = 'instagram',
+  report: Report = () => undefined,
 ) {
   const handles = await listSearchAccounts(tenantId);
   if (network === 'twitter') {
-    return runTwitterSearch(tenantId, handles.twitter, resultsPerAccount);
+    return runTwitterSearch(tenantId, handles.twitter, resultsPerAccount, report);
   }
   const accounts = handles.instagram ? [handles.instagram] : [];
   const urls = accounts
@@ -81,8 +140,10 @@ export async function runTenantSearch(
     throw new ValidationError('Esta cuenta no tiene un perfil de Instagram.');
   }
 
+  report(`Bajando publicaciones de ${accounts[0]}.`);
   const { runId, items } = await scrapeInstagramPosts(urls, resultsPerAccount);
   if (items.length === 0) {
+    report('No llegaron publicaciones.');
     return {
       network: 'instagram' as const,
       accounts,
@@ -94,6 +155,8 @@ export async function runTenantSearch(
   }
 
   const mapped = mapApifyDataset(items, runId);
+  await narratePosts(mapped.payload.posts, report);
+  await say(report, 'Guardando lo leído.');
   await upsertDiscoveredAccounts(tenantId, mapped.discoveredAccounts);
   const ingested = await ingestPayload(tenantId, mapped.payload);
   if (!ingested.duplicated) {
@@ -105,11 +168,17 @@ export async function runTenantSearch(
     0,
   );
 
+  const posts = mapped.payload.posts.length;
+  if (ingested.duplicated) {
+    await say(report, 'Esas publicaciones ya estaban cargadas.');
+  } else {
+    await say(report, `Listo. Entraron ${posts} publicaciones y ${comments} comentarios.`);
+  }
   return {
     network: 'instagram' as const,
     accounts,
     resultsPerAccount,
-    posts: mapped.payload.posts.length,
+    posts,
     comments,
     duplicated: ingested.duplicated,
   };
@@ -119,15 +188,18 @@ async function runTwitterSearch(
   tenantId: string,
   account: string | null,
   resultsPerAccount: number,
+  report: Report,
 ) {
   const handle = account ? normalizeTwitterHandle(account) : null;
   if (!handle) {
     throw new ValidationError('Esta cuenta no tiene un usuario de Twitter.');
   }
 
-  const { runId, items } = await scrapeTweets(handle, resultsPerAccount);
   const accounts = [`@${handle}`];
+  report(`Bajando publicaciones de @${handle}.`);
+  const { runId, items } = await scrapeTweets(handle, resultsPerAccount);
   if (items.length === 0) {
+    report('No llegaron publicaciones.');
     return {
       network: 'twitter' as const,
       accounts,
@@ -139,6 +211,8 @@ async function runTwitterSearch(
   }
 
   const mapped = mapTwitterDataset(items, handle, runId);
+  await narratePosts(mapped.payload.posts, report);
+  await say(report, 'Guardando lo leído.');
   await upsertDiscoveredAccounts(tenantId, mapped.discoveredAccounts, 'twitter');
   const ingested = await ingestPayload(tenantId, mapped.payload);
   if (!ingested.duplicated) {
@@ -148,11 +222,17 @@ async function runTwitterSearch(
     (sum, post) => sum + post.comments.length,
     0,
   );
+  const posts = mapped.payload.posts.length;
+  if (ingested.duplicated) {
+    await say(report, 'Esas publicaciones ya estaban cargadas.');
+  } else {
+    await say(report, `Listo. Entraron ${posts} publicaciones y ${comments} comentarios.`);
+  }
   return {
     network: 'twitter' as const,
     accounts,
     resultsPerAccount,
-    posts: mapped.payload.posts.length,
+    posts,
     comments,
     duplicated: ingested.duplicated,
   };
