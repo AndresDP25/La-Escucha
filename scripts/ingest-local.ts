@@ -11,7 +11,7 @@ import { resolve } from 'node:path';
 import { prisma } from '../src/db/prisma';
 
 const file = process.argv[2];
-const slug = process.argv[3] ?? 'agusciarletta';
+const slug = process.argv[3] ?? 'san-fernando';
 const baseUrl = process.env.API_URL ?? 'http://127.0.0.1:3000';
 
 async function main(): Promise<void> {

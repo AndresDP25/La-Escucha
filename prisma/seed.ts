@@ -2,7 +2,7 @@
  * Seed inicial de la base de datos.
  *
  * Crea:
- *  - Tenant Agustina Ciarletta y tenant Municipio de San Fernando.
+ *  - Tenant Municipio de San Fernando.
  *  - Objetivos de scraping (cuentas / hashtags) de ejemplo.
  *  - Un diccionario de keywords de ejemplo por categoria.
  *
@@ -28,44 +28,7 @@ const SAN_FERNANDO_KEYWORDS: KeywordGroup[] = [
   { category: 'POLITICS', patterns: ['intendente', 'concejal', 'campania', 'militancia', 'puntero'] },
 ];
 
-const CIARLETTA_KEYWORDS: KeywordGroup[] = [
-  {
-    category: 'SUPPORT',
-    patterns: ['excelente', 'fundamental', 'genialidad', 'ojala', 'fuerza', 'te voto', 'vamos'],
-  },
-  {
-    category: 'ENGAGEMENT',
-    weight: 2,
-    patterns: ['participar', 'reuniones', 'reunion', 'registrar', 'registrarme'],
-  },
-  {
-    category: 'ATTACK',
-    weight: 2,
-    patterns: ['media pila', 'charletta', 'jajaja', 'rompen'],
-  },
-  {
-    category: 'POLITICS',
-    patterns: ['politica', 'nacion', 'municipio'],
-  },
-];
-
-const PILOT_TARGETS: { type: 'ACCOUNT' | 'HASHTAG' | 'LOCATION'; value: string }[] = [
-  { type: 'ACCOUNT', value: '@agusciarletta' },
-];
-
 async function main(): Promise<void> {
-  const agus = await prisma.tenant.upsert({
-    where: { slug: 'agusciarletta' },
-    update: { name: 'Agustina Ciarletta', instagramHandle: 'agusciarletta' },
-    create: {
-      name: 'Agustina Ciarletta',
-      slug: 'agusciarletta',
-      instagramHandle: 'agusciarletta',
-      webhookSecret: randomBytes(32).toString('hex'),
-      anonymizationSalt: randomBytes(16).toString('hex'),
-    },
-  });
-
   const sanFernando = await prisma.tenant.upsert({
     where: { slug: 'san-fernando' },
     update: { name: 'Municipio de San Fernando', instagramHandle: 'sanfermunicipio' },
@@ -95,27 +58,6 @@ async function main(): Promise<void> {
     },
   });
 
-  for (const target of PILOT_TARGETS) {
-    await prisma.scrapeTarget.upsert({
-      where: {
-        tenantId_type_value: {
-          tenantId: agus.id,
-          type: target.type,
-          value: target.value,
-        },
-      },
-      update: {},
-      create: { tenantId: agus.id, ...target },
-    });
-  }
-
-  await prisma.keywordConfig.deleteMany({
-    where: {
-      tenantId: agus.id,
-      category: { in: ['SECURITY', 'PUBLIC_WORKS', 'HEALTH'] },
-    },
-  });
-
   async function seedKeywords(tenantId: string, groups: KeywordGroup[]) {
     for (const group of groups) {
       for (const pattern of group.patterns) {
@@ -139,7 +81,6 @@ async function main(): Promise<void> {
   }
 
   await seedKeywords(sanFernando.id, SAN_FERNANDO_KEYWORDS);
-  await seedKeywords(agus.id, CIARLETTA_KEYWORDS);
 
   for (const slug of ['pro-argentina', 'pro-ciudad']) {
     const party = await prisma.tenant.findUnique({
@@ -152,7 +93,7 @@ async function main(): Promise<void> {
   // eslint-disable-next-line no-console
   console.log('✅ Seed completado.');
   // eslint-disable-next-line no-console
-  console.log(`   Tenants: ${agus.name} (${agus.slug}) | ${sanFernando.name} (${sanFernando.slug})`);
+  console.log(`   Tenants: ${sanFernando.name} (${sanFernando.slug})`);
 }
 
 main()

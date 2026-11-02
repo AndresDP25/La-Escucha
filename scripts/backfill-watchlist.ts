@@ -10,7 +10,7 @@ import { mapApifyDataset } from '../src/modules/ingestion/apify.mapper';
 import { upsertDiscoveredAccounts } from '../src/modules/watchlist/watchlist.service';
 
 const file = process.argv[2];
-const slug = process.argv[3] ?? 'agusciarletta';
+const slug = process.argv[3] ?? 'san-fernando';
 
 async function main(): Promise<void> {
   if (!file) {

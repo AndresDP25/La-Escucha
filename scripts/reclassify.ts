@@ -1,12 +1,12 @@
 /**
  * Reprocesa eventos de ingesta ya guardados (nuevo diccionario).
  *
- *   npm run reclassify -- agusciarletta
+ *   npm run reclassify -- san-fernando
  */
 import { prisma } from '../src/db/prisma';
 import { processIngestionEvent } from '../src/modules/processing/processing.service';
 
-const slug = process.argv[2] ?? 'agusciarletta';
+const slug = process.argv[2] ?? 'san-fernando';
 
 async function main(): Promise<void> {
   const tenant = await prisma.tenant.findUnique({
