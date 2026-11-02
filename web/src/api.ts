@@ -102,6 +102,40 @@ export function patchTenant(
   });
 }
 
+export interface SystemUser {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+  isActive: boolean;
+  tenantId: string | null;
+  tenantName: string | null;
+}
+
+export function fetchUsers() {
+  return request<SystemUser[]>('/users');
+}
+
+export function createUser(body: {
+  fullName: string;
+  email: string;
+  password: string;
+  role: string;
+  tenantId?: string | null;
+}) {
+  return request<SystemUser>('/users', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function patchUser(id: string, body: { isActive: boolean }) {
+  return request<SystemUser>(`/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
 export function login(email: string, password: string) {
   return request<{ token: string; user: SessionUser }>('/auth/login', {
     method: 'POST',

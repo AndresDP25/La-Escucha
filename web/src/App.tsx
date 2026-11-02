@@ -2,8 +2,11 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   clearSession,
   createTenant,
+  createUser,
   fetchMe,
+  fetchUsers,
   patchTenant,
+  patchUser,
   fetchPosts,
   fetchSummary,
   fetchTenants,
@@ -18,6 +21,7 @@ import {
   setSession,
   type PostRow,
   type SessionUser,
+  type SystemUser,
   type Summary,
   type TenantOption,
   type WatchlistRow,
@@ -45,7 +49,7 @@ import {
 } from './icons';
 
 type Tab = 'resumen' | 'publicaciones' | 'sugerencias' | 'referencias';
-type Screen = 'home' | 'settings' | 'profile' | 'accounts' | 'compare';
+type Screen = 'home' | 'settings' | 'profile' | 'accounts' | 'users' | 'compare';
 
 function slugFromName(name: string): string {
   return name
@@ -490,10 +494,18 @@ function Dashboard({
             canManageAccounts={canSwitchTenant}
             onOpenProfile={() => setScreen('profile')}
             onOpenAccounts={() => setScreen('accounts')}
+            onOpenUsers={() => setScreen('users')}
           />
         ) : null}
         {screen === 'profile' ? (
           <ProfilePage user={user} onBack={() => setScreen('settings')} />
+        ) : null}
+        {screen === 'users' && canSwitchTenant ? (
+          <UsersPage
+            tenants={tenants}
+            currentUserId={user.id}
+            onBack={() => setScreen('settings')}
+          />
         ) : null}
         {screen === 'accounts' ? (
           <AccountsPage
@@ -885,10 +897,12 @@ function SettingsHome({
   canManageAccounts,
   onOpenProfile,
   onOpenAccounts,
+  onOpenUsers,
 }: {
   canManageAccounts: boolean;
   onOpenProfile: () => void;
   onOpenAccounts: () => void;
+  onOpenUsers: () => void;
 }) {
   return (
     <div className="settings-page">
@@ -916,6 +930,17 @@ function SettingsHome({
             <span className="settings-tile-copy">
               <strong>Cuentas</strong>
               <span className="muted">Instagram, Twitter y alta de cuentas</span>
+            </span>
+          </button>
+        ) : null}
+        {canManageAccounts ? (
+          <button type="button" className="settings-tile" onClick={onOpenUsers}>
+            <span className="settings-icon" aria-hidden>
+              <IconUser size={20} />
+            </span>
+            <span className="settings-tile-copy">
+              <strong>Usuarios</strong>
+              <span className="muted">Quién entra y con qué rol</span>
             </span>
           </button>
         ) : null}
@@ -1185,6 +1210,203 @@ function AccountsPage({
               </li>
             );
           })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function UsersPage({
+  tenants,
+  currentUserId,
+  onBack,
+}: {
+  tenants: TenantOption[];
+  currentUserId: string;
+  onBack: () => void;
+}) {
+  const [users, setUsers] = useState<SystemUser[]>([]);
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('VIEWER');
+  const [tenantId, setTenantId] = useState(tenants[0]?.id ?? '');
+  const [busy, setBusy] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [ok, setOk] = useState('');
+
+  useEffect(() => {
+    void fetchUsers()
+      .then(setUsers)
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'No se pudieron cargar los usuarios');
+      });
+  }, []);
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setOk('');
+    try {
+      const created = await createUser({
+        fullName: fullName.trim(),
+        email: email.trim(),
+        password,
+        role,
+        tenantId: role === 'SUPER_ADMIN' ? null : tenantId,
+      });
+      setUsers((list) =>
+        [...list, created].sort((a, b) => {
+          const aOn = a.isActive ? 0 : 1;
+          const bOn = b.isActive ? 0 : 1;
+          if (aOn !== bOn) return aOn - bOn;
+          return a.fullName.localeCompare(b.fullName, 'es');
+        }),
+      );
+      setFullName('');
+      setEmail('');
+      setPassword('');
+      setOk(`Listo, ${created.fullName} ya puede entrar.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo crear');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleActive(user: SystemUser) {
+    setTogglingId(user.id);
+    setError('');
+    setOk('');
+    try {
+      const updated = await patchUser(user.id, { isActive: !user.isActive });
+      setUsers((list) =>
+        list
+          .map((item) => (item.id === updated.id ? updated : item))
+          .sort((a, b) => {
+            const aOn = a.isActive ? 0 : 1;
+            const bOn = b.isActive ? 0 : 1;
+            if (aOn !== bOn) return aOn - bOn;
+            return a.fullName.localeCompare(b.fullName, 'es');
+          }),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo actualizar');
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  return (
+    <div className="settings-page">
+      <button type="button" className="back-btn" onClick={onBack}>
+        <span className="back-icon">
+          <IconBack size={18} />
+        </span>
+        Volver
+      </button>
+      <h2>Usuarios</h2>
+      <p className="muted settings-lead">
+        Cada persona entra con su correo y su contraseña. El super admin ve
+        todas las cuentas. El resto solo la cuenta que le asignes.
+      </p>
+
+      <form className="card account-form" onSubmit={(e) => void onSubmit(e)}>
+        <h3 className="settings-kicker">Nuevo usuario</h3>
+        <label htmlFor="user-name">Nombre</label>
+        <input
+          id="user-name"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          required
+        />
+        <label htmlFor="user-email">Correo</label>
+        <input
+          id="user-email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+        <label htmlFor="user-password">Contraseña</label>
+        <input
+          id="user-password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          minLength={6}
+          required
+        />
+        <label htmlFor="user-role">Rol</label>
+        <select id="user-role" value={role} onChange={(e) => setRole(e.target.value)}>
+          <option value="SUPER_ADMIN">Super admin</option>
+          <option value="ADMIN">Admin</option>
+          <option value="OPERATOR">Operador</option>
+          <option value="VIEWER">Consulta</option>
+        </select>
+        {role !== 'SUPER_ADMIN' ? (
+          <>
+            <label htmlFor="user-tenant">Cuenta</label>
+            <select
+              id="user-tenant"
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              required
+            >
+              {tenants.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>
+                  {tenant.name}
+                </option>
+              ))}
+            </select>
+          </>
+        ) : null}
+        {error ? <p className="error">{error}</p> : null}
+        {ok ? <p className="ok-msg">{ok}</p> : null}
+        <p>
+          <button
+            className="btn"
+            type="submit"
+            disabled={busy || !fullName.trim() || !email.trim() || password.length < 6}
+          >
+            {busy ? 'Creando…' : 'Crear usuario'}
+          </button>
+        </p>
+      </form>
+
+      <h3 className="settings-kicker">Quién tiene acceso</h3>
+      {users.length === 0 ? (
+        <p className="muted">Todavía no hay usuarios.</p>
+      ) : (
+        <ul className="account-catalog">
+          {users.map((item) => (
+            <li key={item.id} className={item.isActive ? '' : 'inactive'}>
+              <span className="account-catalog-copy">
+                <strong>
+                  {item.fullName}
+                  {!item.isActive ? <span className="pill dim">Inactivo</span> : null}
+                </strong>
+                <span className="muted">
+                  {item.email}
+                  {' · '}
+                  {ROLE_LABEL[item.role] ?? item.role}
+                  {item.tenantName ? ` · ${item.tenantName}` : ''}
+                </span>
+              </span>
+              {item.id === currentUserId ? null : (
+                <button
+                  type="button"
+                  className={`btn small ${item.isActive ? 'secondary' : ''}`}
+                  disabled={togglingId === item.id}
+                  onClick={() => void toggleActive(item)}
+                >
+                  {togglingId === item.id ? '…' : item.isActive ? 'Desactivar' : 'Reactivar'}
+                </button>
+              )}
+            </li>
+          ))}
         </ul>
       )}
     </div>
