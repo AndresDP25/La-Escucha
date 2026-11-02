@@ -319,42 +319,6 @@ button {
   font-size: 0.92rem;
 }
 
-.search-timeline {
-  flex: 1 1 100%;
-  list-style: none;
-  margin: 0.35rem 0 0;
-  padding: 0.2rem 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.search-timeline li {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.55rem;
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.search-timeline li.current {
-  color: var(--text);
-  font-weight: 650;
-}
-
-.step-mark {
-  width: 0.5rem;
-  height: 0.5rem;
-  margin-top: 0.4rem;
-  border-radius: 50%;
-  background: var(--line);
-  flex-shrink: 0;
-}
-
-.search-timeline li.current .step-mark {
-  background: var(--accent);
-}
-
 .btn.ghost {
   background: transparent;
   color: var(--text);

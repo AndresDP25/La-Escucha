@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   clearSession,
   createTenant,
@@ -16,8 +16,7 @@ import {
   getToken,
   getUser,
   login,
-  fetchScrapeRun,
-  startScrape,
+  runScrape,
   setActiveTenantId,
   setSession,
   type PostRow,
@@ -236,8 +235,6 @@ function SearchBar({
   const [limit, setLimit] = useState(5);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
-  const [steps, setSteps] = useState<string[]>([]);
-  const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -256,45 +253,27 @@ function SearchBar({
     };
   }, [tenantId]);
 
-  useEffect(() => {
-    return () => {
-      if (pollRef.current !== null) window.clearInterval(pollRef.current);
-    };
-  }, []);
-
   const handle = network === 'twitter' ? handles.twitter : handles.instagram;
 
   async function onSearch() {
-    if (pollRef.current !== null) window.clearInterval(pollRef.current);
     setBusy(true);
-    setNote('');
-    setSteps([]);
+    setNote('Buscando… puede tardar un minuto.');
     try {
-      const { id } = await startScrape(limit, network);
-      pollRef.current = window.setInterval(() => {
-        void fetchScrapeRun(id)
-          .then((run) => {
-            setSteps(run.steps.map((step) => step.text));
-            if (run.status === 'running') return;
-            if (pollRef.current !== null) window.clearInterval(pollRef.current);
-            pollRef.current = null;
-            setBusy(false);
-            if (run.status === 'error') {
-              setNote(run.error ?? 'No se pudo buscar');
-              return;
-            }
-            onDone();
-          })
-          .catch((err: unknown) => {
-            if (pollRef.current !== null) window.clearInterval(pollRef.current);
-            pollRef.current = null;
-            setBusy(false);
-            setNote(err instanceof Error ? err.message : 'No se pudo buscar');
-          });
-      }, 400);
+      const res = await runScrape(limit, network);
+      if (res.posts === 0) {
+        setNote('Apify no trajo publicaciones.');
+      } else if (res.duplicated) {
+        setNote('Esas publicaciones ya estaban cargadas.');
+      } else {
+        setNote(
+          `Entraron ${res.posts} publicaciones y ${res.comments} comentarios.`,
+        );
+      }
+      onDone();
     } catch (err) {
-      setBusy(false);
       setNote(err instanceof Error ? err.message : 'No se pudo buscar');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -329,19 +308,6 @@ function SearchBar({
         {busy ? 'Buscando…' : 'Buscar'}
       </button>
       {message ? <p className="search-note">{message}</p> : null}
-      {steps.length > 0 ? (
-        <ol className="search-timeline">
-          {steps.map((step, index) => {
-            const current = busy && index === steps.length - 1;
-            return (
-              <li key={`${index}-${step}`} className={current ? 'current' : ''}>
-                <span className="step-mark" aria-hidden />
-                {step}
-              </li>
-            );
-          })}
-        </ol>
-      ) : null}
     </div>
   );
 }

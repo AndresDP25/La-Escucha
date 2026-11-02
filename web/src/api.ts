@@ -296,21 +296,9 @@ export interface ScrapeRunResult {
   duplicated: boolean;
 }
 
-export interface ScrapeProgress {
-  id: string;
-  status: 'running' | 'done' | 'error';
-  steps: { text: string }[];
-  result?: ScrapeRunResult;
-  error?: string;
-}
-
-export function startScrape(resultsPerAccount: number, network: 'instagram' | 'twitter') {
-  return request<{ id: string }>('/scrape/run', {
+export function runScrape(resultsPerAccount: number, network: 'instagram' | 'twitter') {
+  return request<ScrapeRunResult>('/scrape/run', {
     method: 'POST',
     body: JSON.stringify({ resultsPerAccount, network }),
   });
-}
-
-export function fetchScrapeRun(id: string) {
-  return request<ScrapeProgress>(`/scrape/runs/${id}`);
 }
