@@ -8,6 +8,7 @@ import {
   type BoardTask,
   type TaskStatus,
 } from './api';
+import { IconPencil } from './icons';
 
 const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'TODO', label: 'Pendientes' },
@@ -151,7 +152,9 @@ export function TasksPage({ accountName }: { accountName: string }) {
                     key={task.id}
                     role="listitem"
                     aria-label={task.title}
-                    className={`task-card${draggingId === task.id ? ' dragging' : ''}`}
+                    className={`task-card${draggingId === task.id ? ' dragging' : ''}${
+                      editingId === task.id ? ' editing' : ''
+                    }`}
                     draggable={editingId !== task.id}
                     onDragStart={() => setDraggingId(task.id)}
                     onDragEnd={() => {
@@ -181,23 +184,34 @@ export function TasksPage({ accountName }: { accountName: string }) {
                         }}
                       />
                     ) : (
-                      <h4
-                        onDoubleClick={() => {
+                      <h4>{task.title}</h4>
+                    )}
+                    {editingId === task.id ? null : (
+                    <div
+                      className="task-actions"
+                      onMouseDown={(event) => event.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        className="task-icon"
+                        aria-label={`Editar ${task.title}`}
+                        onClick={() => {
                           setEditingId(task.id);
                           setEditingTitle(task.title);
                         }}
                       >
-                        {task.title}
-                      </h4>
+                        <IconPencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="task-icon"
+                        aria-label={`Borrar ${task.title}`}
+                        onClick={() => void remove(task.id)}
+                      >
+                        ×
+                      </button>
+                    </div>
                     )}
-                    <button
-                      type="button"
-                      className="task-delete"
-                      aria-label={`Borrar ${task.title}`}
-                      onClick={() => void remove(task.id)}
-                    >
-                      ×
-                    </button>
                   </article>
                 ))}
               </div>
