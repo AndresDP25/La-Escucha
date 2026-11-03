@@ -434,30 +434,38 @@ function Dashboard({
   return (
     <div className="app-shell" data-theme={theme}>
       <header className="app-bar">
-        <button
-          type="button"
-          className="brand-home"
-          onClick={() => {
-            setScreen('home');
-            setTab('publicaciones');
-          }}
-        >
-          <span className="mark">
-            <IconLogo size={26} />
-          </span>
-          La Escucha
-        </button>
-        <div className="app-bar-right">
-          {canSwitchTenant ? (
+        <div className="app-bar-left">
+          <div className="brand-home">
+            <span className="mark">
+              <IconLogo size={26} />
+            </span>
+            La Escucha
+          </div>
+          <nav className="app-nav" aria-label="Secciones">
             <button
               type="button"
-              className={`icon-btn app-bar-compare${screen === 'compare' ? ' active' : ''}`}
-              onClick={() => setScreen('compare')}
+              className={`icon-btn${screen === 'home' ? ' active' : ''}`}
+              onClick={() => {
+                setScreen('home');
+                setTab('publicaciones');
+              }}
             >
-              <IconChart size={18} />
-              Comparar
+              <IconFeed size={18} />
+              Monitoreo
             </button>
-          ) : null}
+            {canSwitchTenant ? (
+              <button
+                type="button"
+                className={`icon-btn${screen === 'compare' ? ' active' : ''}`}
+                onClick={() => setScreen('compare')}
+              >
+                <IconChart size={18} />
+                Comparar
+              </button>
+            ) : null}
+          </nav>
+        </div>
+        <div className="app-bar-right">
           {canSwitchTenant && liveTenants.length > 0 ? (
             <AccountSwitch
               tenants={liveTenants}
@@ -476,7 +484,14 @@ function Dashboard({
           )}
           <button
             type="button"
-            className={`icon-btn${screen !== 'home' ? ' active' : ''}`}
+            className={`icon-btn${
+              screen === 'settings' ||
+              screen === 'profile' ||
+              screen === 'accounts' ||
+              screen === 'users'
+                ? ' active'
+                : ''
+            }`}
             onClick={() => setScreen('settings')}
           >
             <IconGear size={18} />

@@ -80,18 +80,28 @@ header.app-bar {
   z-index: 20;
 }
 
+.app-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  min-width: 0;
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .brand-home {
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  background: none;
-  border: 0;
   color: inherit;
-  padding: 0;
-  font: inherit;
   font-weight: 700;
   font-size: 1.22rem;
   letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .brand-home span.mark {
@@ -103,10 +113,6 @@ header.app-bar {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-}
-
-.app-bar-compare {
-  margin-right: 1rem;
 }
 
 header.app-bar .meta {
