@@ -25,24 +25,26 @@ export function IconLogo({ size = 22 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
       <rect width="32" height="32" rx="8" fill="#e6e6e6" />
-      <path
-        fill="#1a1a1a"
-        d="M2.8 11.6h6.4l8.2-6.8v21.6l-8.2-6.8H2.8c-.8 0-1.4-.6-1.4-1.4v-5.2c0-.8.6-1.4 1.4-1.4z"
-      />
-      <path
-        fill="none"
-        stroke="#1a1a1a"
-        strokeWidth="2.25"
-        strokeLinecap="round"
-        d="M20.4 12.4a4.6 4.6 0 0 1 0 7.2"
-      />
-      <path
-        fill="none"
-        stroke="#1a1a1a"
-        strokeWidth="2.25"
-        strokeLinecap="round"
-        d="M25.2 8.8a8.6 8.6 0 0 1 0 14.4"
-      />
+      <g transform="translate(16 16) scale(0.8) translate(-16 -16)">
+        <path
+          fill="#1a1a1a"
+          d="M2.8 11.6h6.4l8.2-6.8v21.6l-8.2-6.8H2.8c-.8 0-1.4-.6-1.4-1.4v-5.2c0-.8.6-1.4 1.4-1.4z"
+        />
+        <path
+          fill="none"
+          stroke="#1a1a1a"
+          strokeWidth="2.25"
+          strokeLinecap="round"
+          d="M20.4 12.4a4.6 4.6 0 0 1 0 7.2"
+        />
+        <path
+          fill="none"
+          stroke="#1a1a1a"
+          strokeWidth="2.25"
+          strokeLinecap="round"
+          d="M25.2 8.8a8.6 8.6 0 0 1 0 14.4"
+        />
+      </g>
     </svg>
   );
 }
