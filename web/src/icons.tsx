@@ -23,26 +23,25 @@ function Svg({ size = 18, className, children }: IconProps & { children: ReactNo
 
 export function IconLogo({ size = 22 }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
-      <rect width="24" height="24" rx="7" fill="currentColor" />
-      <ellipse cx="12" cy="9.1" rx="6.1" ry="5.2" fill="#fff" />
-      <circle cx="9.85" cy="8.55" r="1.15" fill="currentColor" />
-      <circle cx="14.15" cy="8.55" r="1.15" fill="currentColor" />
-      <circle cx="10.2" cy="8.25" r="0.32" fill="#fff" />
-      <circle cx="14.5" cy="8.25" r="0.32" fill="#fff" />
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
+      <rect width="32" height="32" rx="8" fill="#e6e6e6" />
       <path
-        d="M6.6 12.1 C 3.8 12.6 3 14.4 2.7 16.6
-           M17.4 12.1 C 20.2 12.6 21 14.4 21.3 16.6
-           M7.4 13.4 C 5.2 15.2 4.4 18.2 4.1 21
-           M9.4 14.3 C 8.2 16.6 7.6 18.8 7.5 21.2
-           M11.1 14.6 C 10.6 17.2 10.3 19.2 10.4 21.4
-           M12.9 14.6 C 13.4 17.2 13.7 19.2 13.6 21.4
-           M14.6 14.3 C 15.8 16.6 16.4 18.8 16.5 21.2
-           M16.6 13.4 C 18.8 15.2 19.6 18.2 19.9 21"
+        fill="#1a1a1a"
+        d="M2.8 11.6h6.4l8.2-6.8v21.6l-8.2-6.8H2.8c-.8 0-1.4-.6-1.4-1.4v-5.2c0-.8.6-1.4 1.4-1.4z"
+      />
+      <path
         fill="none"
-        stroke="#fff"
-        strokeWidth="1.65"
+        stroke="#1a1a1a"
+        strokeWidth="2.25"
         strokeLinecap="round"
+        d="M20.4 12.4a4.6 4.6 0 0 1 0 7.2"
+      />
+      <path
+        fill="none"
+        stroke="#1a1a1a"
+        strokeWidth="2.25"
+        strokeLinecap="round"
+        d="M25.2 8.8a8.6 8.6 0 0 1 0 14.4"
       />
     </svg>
   );
