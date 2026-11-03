@@ -173,8 +173,8 @@ function Login({ onOk }: { onOk: (user: SessionUser) => void }) {
       <form autoComplete="off" onSubmit={(e) => void onSubmit(e)}>
         <div className="brand">
           <IconLogo size={40} />
+          <h1>La Escucha</h1>
         </div>
-        <h1>La Escucha</h1>
         <p className="hint">Monitoreo de publicaciones y comentarios.</p>
         <label htmlFor="email">Correo</label>
         <input

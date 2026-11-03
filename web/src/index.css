@@ -894,14 +894,12 @@ th {
 .login .brand {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  color: var(--accent);
-  font-weight: 700;
+  gap: 0.7rem;
   margin-bottom: 0.35rem;
 }
 
 .login h1 {
-  margin: 0 0 0.35rem;
+  margin: 0;
   font-size: 1.7rem;
   letter-spacing: -0.03em;
 }
