@@ -179,6 +179,7 @@ async function upsertPost(
       url: data.url,
       caption: data.caption,
       publishedAt: data.publishedAt,
+      raw: data.raw,
     },
     select: { id: true },
   });

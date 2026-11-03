@@ -29,6 +29,8 @@ export const RawPostSchema = z
     url: z.string().url().optional(),
     ownerUsername: z.string().optional(),
     caption: z.string().optional(),
+    /** Foto principal, si el scraper la mandó. */
+    imageUrl: z.string().url().optional(),
     timestamp: z.string().datetime().optional(),
     comments: z.array(RawCommentSchema).default([]),
   })

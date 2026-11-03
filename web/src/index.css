@@ -1122,9 +1122,35 @@ a {
   font-weight: 600;
 }
 
+.post-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.post-thumb {
+  width: 3rem;
+  height: 3rem;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+  background: var(--th);
+}
+
 .post-preview {
   font-size: 1.05rem;
   line-height: 1.45;
+}
+
+.post-image {
+  display: block;
+  width: min(100%, 28rem);
+  max-height: 22rem;
+  object-fit: cover;
+  border-radius: 10px;
+  margin: 0 0 0.85rem;
+  background: var(--th);
 }
 
 .comment-count {

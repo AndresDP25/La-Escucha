@@ -61,6 +61,54 @@ export interface ApifyMapResult {
   discoveredAccounts: DiscoveredAccount[];
 }
 
+function httpUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function urlFromMedia(value: unknown): string | undefined {
+  const direct = httpUrl(value);
+  if (direct) return direct;
+  if (!value || typeof value !== 'object') return undefined;
+  const media = value as Record<string, unknown>;
+  return httpUrl(media.media_url_https) ?? httpUrl(media.url) ?? httpUrl(media.displayUrl);
+}
+
+/** Primera imagen que mande el scraper: Instagram usa displayUrl, Twitter usa media. */
+export function pickImageUrl(source: unknown): string | undefined {
+  if (!source || typeof source !== 'object') return undefined;
+  const post = source as Record<string, unknown>;
+  const direct =
+    httpUrl(post.displayUrl) ?? httpUrl(post.imageUrl) ?? httpUrl(post.thumbnailUrl);
+  if (direct) return direct;
+
+  for (const list of [post.images, post.media, post.photos]) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      const url = urlFromMedia(item);
+      if (url) return url;
+    }
+  }
+
+  const extended = post.extendedEntities;
+  if (extended && typeof extended === 'object') {
+    const media = (extended as Record<string, unknown>).media;
+    if (Array.isArray(media)) {
+      for (const item of media) {
+        const url = urlFromMedia(item);
+        if (url) return url;
+      }
+    }
+  }
+  return undefined;
+}
+
 function toComment(raw: z.infer<typeof ApifyCommentSchema>): RawComment {
   return {
     id: raw.id,
@@ -133,6 +181,7 @@ function toCanonicalPost(post: z.infer<typeof ApifyPostSchema>): RawPost {
     url: post.url,
     ownerUsername: post.ownerUsername,
     caption: post.caption,
+    imageUrl: pickImageUrl(post),
     timestamp: post.timestamp,
     comments: sample.map(toComment),
   };

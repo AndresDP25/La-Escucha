@@ -244,6 +244,7 @@ export interface PostRow {
   network?: string;
   caption: string | null;
   url: string | null;
+  imageUrl?: string | null;
   ownerUsername: string | null;
   publishedAt: string | null;
   category?: string;

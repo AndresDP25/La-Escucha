@@ -10,7 +10,7 @@ import {
   type RawComment,
   type RawPost,
 } from './ingestion.schema';
-import { fingerprintDataset, type ApifyMapResult, type DiscoveredAccount } from './apify.mapper';
+import { fingerprintDataset, pickImageUrl, type ApifyMapResult, type DiscoveredAccount } from './apify.mapper';
 
 const TweetSchema = z
   .object({
@@ -137,6 +137,7 @@ export function mapTwitterDataset(
       url: tweet.twitterUrl ?? tweet.url ?? `https://x.com/${author ?? handle}/status/${tweet.id}`,
       ownerUsername: author ?? handle,
       caption: textOf(tweet),
+      imageUrl: pickImageUrl(tweet),
       timestamp: iso(tweet.createdAt),
       comments: [],
     });

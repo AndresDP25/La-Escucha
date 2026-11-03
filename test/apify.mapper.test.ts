@@ -8,6 +8,7 @@ const sampleDataset = [
     hashtags: ['InTheMoment'],
     mentions: ['alwayscodingsomething'],
     url: 'https://www.instagram.com/p/DeM-xDCA2W5/',
+    displayUrl: 'https://cdn.example.com/post.jpg',
     commentsCount: 11760,
     latestComments: [
       {
@@ -40,6 +41,7 @@ describe('mapApifyDataset', () => {
     expect(payload.posts).toHaveLength(1);
     expect(payload.posts[0].id).toBe('4002850218218579385');
     expect(payload.posts[0].ownerUsername).toBe('instagram');
+    expect(payload.posts[0].imageUrl).toBe('https://cdn.example.com/post.jpg');
     expect(payload.posts[0].comments).toHaveLength(2);
     expect(payload.posts[0].comments[0].ownerUsername).toBe('sunn_ychukwudi');
     expect(payload.posts[0].comments[1].text).toBe('@gol.online33');

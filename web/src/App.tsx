@@ -170,7 +170,7 @@ function Login({ onOk }: { onOk: (user: SessionUser) => void }) {
 
   return (
     <div className="login" data-theme="san-fernando">
-      <form onSubmit={(e) => void onSubmit(e)}>
+      <form autoComplete="off" onSubmit={(e) => void onSubmit(e)}>
         <div className="brand">
           <IconLogo size={40} />
         </div>
@@ -182,7 +182,7 @@ function Login({ onOk }: { onOk: (user: SessionUser) => void }) {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          autoComplete="username"
+          autoComplete="off"
         />
         <label htmlFor="password">Contraseña</label>
         <input
@@ -190,7 +190,7 @@ function Login({ onOk }: { onOk: (user: SessionUser) => void }) {
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
+          autoComplete="off"
         />
         {error ? <p className="error">{error}</p> : null}
         <p>
@@ -319,7 +319,7 @@ function Dashboard({
   user: SessionUser;
   onLogout: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>('resumen');
+  const [tab, setTab] = useState<Tab>('publicaciones');
   const [feed, setFeed] = useState<'instagram' | 'twitter'>('instagram');
   const [summary, setSummary] = useState<Summary | null>(null);
   const [posts, setPosts] = useState<PostRow[]>([]);
@@ -439,7 +439,7 @@ function Dashboard({
           className="brand-home"
           onClick={() => {
             setScreen('home');
-            setTab('resumen');
+            setTab('publicaciones');
           }}
         >
           <span className="mark">
@@ -700,7 +700,23 @@ function Dashboard({
                         {post.ownerUsername ? `@${post.ownerUsername}` : 'Post'}
                         {post.publishedAt ? ` · ${formatWhen(post.publishedAt)}` : ''}
                       </span>
-                      {open ? null : (
+                      {open || !post.imageUrl ? null : (
+                        <span className="post-preview-row">
+                          <img
+                            className="post-thumb"
+                            src={post.imageUrl}
+                            alt=""
+                            referrerPolicy="no-referrer"
+                            onError={(event) => {
+                              event.currentTarget.hidden = true;
+                            }}
+                          />
+                          <span className="post-preview">
+                            {captionPreview(post.caption)}
+                          </span>
+                        </span>
+                      )}
+                      {open || post.imageUrl ? null : (
                         <span className="post-preview">
                           {captionPreview(post.caption)}
                         </span>
@@ -713,6 +729,17 @@ function Dashboard({
                   </button>
                   {open ? (
                     <div className="post-detail">
+                      {post.imageUrl ? (
+                        <img
+                          className="post-image"
+                          src={post.imageUrl}
+                          alt=""
+                          referrerPolicy="no-referrer"
+                          onError={(event) => {
+                            event.currentTarget.hidden = true;
+                          }}
+                        />
+                      ) : null}
                       <p className="post-caption">
                         {post.caption || <span className="muted">Sin texto</span>}
                       </p>

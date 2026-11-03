@@ -137,6 +137,7 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
         caption: true,
         url: true,
         authorRef: true,
+        raw: true,
         publishedAt: true,
         comments: {
           orderBy: { publishedAt: 'desc' },
@@ -184,11 +185,15 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
         category = result.category;
         sentiment = result.sentiment;
       }
+      const rawImage = row.raw && typeof row.raw === 'object' && !Array.isArray(row.raw)
+        ? (row.raw as { imageUrl?: unknown }).imageUrl
+        : null;
       mapped.push({
         id: row.id,
         network: row.network,
         caption: row.caption,
         url: row.url,
+        imageUrl: typeof rawImage === 'string' ? rawImage : null,
         ownerUsername: row.authorRef,
         publishedAt: row.publishedAt,
         category,
