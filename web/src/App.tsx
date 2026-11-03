@@ -31,10 +31,12 @@ import { AccountLogo } from './logos';
 import { ComparePage } from './Compare';
 import { Reading } from './Reading';
 import { SuggestionsPanel } from './Suggestions';
+import { TasksPage } from './Tasks';
 import {
   IconAccounts,
   IconAt,
   IconBack,
+  IconBoard,
   IconCaret,
   IconChart,
   IconChevron,
@@ -49,7 +51,7 @@ import {
 } from './icons';
 
 type Tab = 'resumen' | 'publicaciones' | 'sugerencias' | 'referencias';
-type Screen = 'home' | 'settings' | 'profile' | 'accounts' | 'users' | 'compare';
+type Screen = 'home' | 'settings' | 'profile' | 'accounts' | 'users' | 'compare' | 'tasks';
 
 function slugFromName(name: string): string {
   return name
@@ -453,6 +455,14 @@ function Dashboard({
               <IconFeed size={18} />
               Monitoreo
             </button>
+            <button
+              type="button"
+              className={`icon-btn${screen === 'tasks' ? ' active' : ''}`}
+              onClick={() => setScreen('tasks')}
+            >
+              <IconBoard size={18} />
+              Tareas
+            </button>
             {canSwitchTenant ? (
               <button
                 type="button"
@@ -572,6 +582,15 @@ function Dashboard({
         ) : null}
         {screen === 'compare' && canSwitchTenant ? (
           <ComparePage tenants={liveTenants} />
+        ) : null}
+        {screen === 'tasks' && activeTenantId ? (
+          <TasksPage
+            key={activeTenantId}
+            accountName={activeAccount?.name ?? user.tenantName ?? 'esta cuenta'}
+          />
+        ) : null}
+        {screen === 'tasks' && !activeTenantId ? (
+          <p className="hint">Elegí una cuenta para ver sus tareas.</p>
         ) : null}
         {screen === 'home' ? (
           <>

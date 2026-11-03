@@ -89,6 +89,13 @@ enum WatchlistStatus {
   IGNORED
 }
 
+/// Columna de la pizarra de tareas.
+enum TaskStatus {
+  TODO
+  DOING
+  DONE
+}
+
 // ----------------------------------------------------------------------------
 // Tenant (Municipio) - raiz de la multitenancy
 // ----------------------------------------------------------------------------
@@ -118,6 +125,7 @@ model Tenant {
   posts           Post[]
   comments        Comment[]
   watchlist       WatchlistAccount[]
+  tasks           Task[]
 
   @@map("tenants")
 }
@@ -188,6 +196,25 @@ model WatchlistAccount {
   @@unique([tenantId, network, username])
   @@index([tenantId, status])
   @@map("watchlist_accounts")
+}
+
+// ----------------------------------------------------------------------------
+// Task (pizarra por cuenta: pendiente, en curso, finalizada)
+// ----------------------------------------------------------------------------
+
+model Task {
+  id        String     @id @default(uuid())
+  tenantId  String     @map("tenant_id")
+  title     String
+  status    TaskStatus @default(TODO)
+  position  Int        @default(0)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, position])
+  @@map("tasks")
 }
 
 // ----------------------------------------------------------------------------

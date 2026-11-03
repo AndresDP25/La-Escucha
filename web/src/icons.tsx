@@ -100,6 +100,16 @@ export function IconChart(props: IconProps) {
   );
 }
 
+export function IconBoard(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3.5" y="4" width="4.5" height="16" rx="1" />
+      <rect x="9.75" y="4" width="4.5" height="10" rx="1" />
+      <rect x="16" y="4" width="4.5" height="13" rx="1" />
+    </Svg>
+  );
+}
+
 export function IconFeed(props: IconProps) {
   return (
     <Svg {...props}>

@@ -27,6 +27,7 @@ import { watchlistRoutes } from './modules/watchlist/watchlist.routes';
 import { scrapingRoutes } from './modules/scraping/scraping.routes';
 import { bootstrapRoutes } from './modules/bootstrap/bootstrap.routes';
 import { usersRoutes } from './modules/users/users.routes';
+import { tasksRoutes } from './modules/tasks/tasks.routes';
 
 export async function buildApp(): Promise<FastifyInstance> {
   // Casteamos el logger de pino a FastifyBaseLogger para que el tipo de la
@@ -89,6 +90,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await scope.register(scrapingRoutes);
     await scope.register(bootstrapRoutes);
     await scope.register(usersRoutes);
+    await scope.register(tasksRoutes);
   };
   await registerApi(app);
   await app.register(registerApi, { prefix: '/api' });

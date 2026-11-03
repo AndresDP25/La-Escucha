@@ -303,3 +303,42 @@ export function runScrape(resultsPerAccount: number, network: 'instagram' | 'twi
     body: JSON.stringify({ resultsPerAccount, network }),
   });
 }
+
+export type TaskStatus = 'TODO' | 'DOING' | 'DONE';
+
+export interface BoardTask {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  position: number;
+  createdAt: string;
+}
+
+export function fetchTasks() {
+  return request<BoardTask[]>('/tasks');
+}
+
+export function createTask(title: string, status: TaskStatus = 'TODO') {
+  return request<BoardTask>('/tasks', {
+    method: 'POST',
+    body: JSON.stringify({ title, status }),
+  });
+}
+
+export function moveTask(id: string, status: TaskStatus, beforeId: string | null) {
+  return request<BoardTask>(`/tasks/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, beforeId }),
+  });
+}
+
+export function renameTask(id: string, title: string) {
+  return request<BoardTask>(`/tasks/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
+  });
+}
+
+export function deleteTask(id: string) {
+  return request<unknown>(`/tasks/${id}`, { method: 'DELETE' });
+}
