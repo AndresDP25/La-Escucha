@@ -61,24 +61,95 @@ function sentence(text: string): string | null {
   return `${clean.charAt(0).toUpperCase()}${clean.slice(1)}.`;
 }
 
+const PLACE_STOP = new Set([
+  'cansado',
+  'cansada',
+  'cansados',
+  'foto',
+  'fotos',
+  'mandarle',
+  'mandar',
+  'porque',
+  'gracias',
+  'favor',
+  'por',
+  'ya',
+  'siempre',
+  'nunca',
+  'mas',
+  'ahi',
+  'que',
+  'con',
+  'para',
+  'este',
+  'esta',
+  'estan',
+  'roto',
+  'rota',
+  'rotas',
+  'rotos',
+]);
+
 function trimClause(rest: string): string {
   const cut = rest.split(/\b(ahi|porque|no puede|gracias|por favor|ahi es)\b/)[0] ?? rest;
   return cut.replace(/[.,;:]+$/, '').trim().split(' ').slice(0, 6).join(' ');
 }
 
-function asAdvice(raw: string): string | null {
+function placeName(raw: string): string {
+  const words: string[] = [];
+  for (const word of raw.split(' ').filter(Boolean)) {
+    if (PLACE_STOP.has(word) || words.length >= 3) break;
+    words.push(word);
+  }
+  while (words.length && ['de', 'del', 'en', 'y', 'a'].includes(words[words.length - 1])) {
+    words.pop();
+  }
+  return words
+    .map((word) => {
+      if (word === 'caba' || word === 'gcba' || word === 'amba') return word.toUpperCase();
+      if (word === 'de' || word === 'del' || word === 'y') return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
+
+function repairNoun(word: string): string {
+  if (word.startsWith('calle')) return 'la calle';
+  if (word.startsWith('vereda')) return 'las veredas';
+  if (word.startsWith('bache') || word.startsWith('crater')) return 'los baches';
+  if (word.startsWith('semaforo')) return 'los semáforos';
+  if (word.startsWith('asfalto')) return 'el asfalto';
+  return 'el alumbrado';
+}
+
+/** Pedido de obra: hace falta un verbo, no alcanza con nombrar la calle. */
+function repairAsk(lower: string): string | null {
+  const when = lower.match(
+    /^(?:y\s+)?((?:las|los|la|el)\s+(?:veredas?|calles?|baches?|asfalto|alumbrado|semaforos?))\s+para cuando$/,
+  );
+  if (when) return sentence(`Arreglar ${when[1]}`);
+
+  const verb = lower.match(
+    /\b(?:arreglen|arreglar|reparen|reparar|asfalten|asfaltar|tapen|tapar|tapa)\s+(.+)/,
+  );
+  if (!verb) return null;
+  const infra = verb[1].match(
+    /\b(?:(?:las|los|la|el)\s+)?(veredas?|calles?|baches?|crateres?|asfalto|alumbrado|semaforos?)\b(?:\s+(?:de|del|en)\s+([a-z0-9ñ ]+))?/,
+  );
+  if (!infra) return null;
+  const where = placeName(infra[2] ?? '');
+  const noun = repairNoun(infra[1]);
+  return sentence(where ? `Arreglar ${noun} de ${where}` : `Arreglar ${noun}`);
+}
+
+function asAdvice(raw: string, category: string): string | null {
   const plain = raw.replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim();
   const lower = fold(plain);
 
-  const when = lower.match(/^(?:y\s+)?((?:las|los|la|el)\s+.+?)\s+para cuando$/);
-  if (when) {
-    const thing = when[1];
-    if (/vereda|calle|bache|asfalto|semaforo|alumbrado/.test(thing)) return sentence(`Arreglar ${thing}`);
-    return sentence(`Atender ${thing}`);
+  if (category === 'PUBLIC_WORKS') {
+    const repair = repairAsk(lower);
+    if (repair) return repair;
   }
-
-  const fix = lower.match(/(?:arreglen|arreglar|reparen|reparar|asfalten|asfaltar)\s+(.+)/);
-  if (fix) return sentence(`Arreglar ${trimClause(fix[1])}`);
 
   const money = lower.match(/(?:pongan|poner)\s+(?:mas\s+)?(?:plata|recursos|presupuesto)\s+en\s+(.+)/);
   if (money) return sentence(`Poner más recursos en ${trimClause(money[1])}`);
@@ -87,23 +158,6 @@ function asAdvice(raw: string): string | null {
   if (missing) {
     const thing = missing[1].replace(/^de\s+/, '');
     return sentence(`Resolver la falta de ${thing}`);
-  }
-
-  const place = lower.match(
-    /\b(veredas?|calles?|baches?|asfalto|alumbrado|semaforos?)\b(?:\s+(?:de|en)\s+([a-z0-9ñ ]{3,40}))?/,
-  );
-  if (place) {
-    const noun = place[1].startsWith('calle')
-      ? 'la calle'
-      : place[1].startsWith('vereda')
-        ? 'las veredas'
-        : place[1].startsWith('bache')
-          ? 'los baches'
-          : place[1].startsWith('semaforo')
-            ? 'los semáforos'
-            : 'el alumbrado';
-    const where = trimClause(place[2] ?? '');
-    return sentence(where ? `Arreglar ${noun} de ${where}` : `Arreglar ${noun}`);
   }
 
   return null;
@@ -128,6 +182,8 @@ function politicalAdvice(items: Piece[]): string | null {
   }
   const pick = (counts: Map<string, number>) =>
     [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const mentioned = [...against.values(), ...favor.values()].reduce((sum, count) => sum + count, 0);
+  if (mentioned < 2) return null;
   const no = pick(against);
   const yes = pick(favor);
   if (no && yes && no !== yes) {
@@ -161,13 +217,14 @@ function piecesOf(posts: PostRow[]): Piece[] {
 function asksFrom(items: Piece[]): ThemeAsk[] {
   const groups = new Map<string, Piece[]>();
   for (const item of items) {
-    const text = asAdvice(item.text);
+    const text = asAdvice(item.text, item.category);
     if (!text) continue;
     const list = groups.get(text) ?? [];
     list.push(item);
     groups.set(text, list);
   }
   return [...groups.entries()]
+    .filter((entry) => entry[1].length >= 2)
     .sort((a, b) => b[1].length - a[1].length)
     .slice(0, 3)
     .map(([text, group]) => ({
