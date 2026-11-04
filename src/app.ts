@@ -40,7 +40,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(cors, {
     origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
   });
-  await app.register(helmet);
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        'img-src': ["'self'", 'data:', 'https:'],
+      },
+    },
+  });
   await app.register(rateLimit, {
     max: 300,
     timeWindow: '1 minute',
