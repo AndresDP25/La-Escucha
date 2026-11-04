@@ -17,7 +17,7 @@ const POSITIVE_WORDS = new Set([
 const NEGATIVE_WORDS = new Set([
   'pesimo', 'malo', 'mala', 'horrible', 'desastre', 'verguenza', 'basura',
   'nunca', 'inseguro', 'inseguridad', 'robo', 'robaron', 'peligro', 'peligroso',
-  'roto', 'rota', 'abandonado', 'sucio', 'demora', 'lento', 'reclamo', 'queja',
+  'roto', 'rota', 'abandonado', 'sucio', 'demora', 'lento', 'queja',
   'bronca', 'indignante', 'corrupto', 'mentira', 'no funciona',
   'decepcion', 'fraude', 'dictadura', 'dictatorial', 'traicion', 'infeliz',
   'tibieza',
