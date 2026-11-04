@@ -99,7 +99,7 @@ function formatWhen(iso: string | null | undefined): string {
 
 function commentCopy(text: string, emojis: string[]): { body: string; emojiOnly: boolean } {
   const clean = text.replace(/\s+/g, ' ').trim();
-  const faces = emojis.filter(Boolean).join(' ');
+  const faces = emojis.filter((emoji) => emoji && !clean.includes(emoji)).join(' ');
   if (clean && faces) return { body: `${clean} ${faces}`, emojiOnly: false };
   if (clean) return { body: clean, emojiOnly: false };
   if (faces) return { body: faces, emojiOnly: true };
@@ -796,7 +796,7 @@ function Dashboard({
                           <p className="muted">No hay comentarios en esta muestra.</p>
                         ) : (
                           post.comments.map((c) => {
-                            const copy = commentCopy(c.cleanText, c.emojis);
+                            const copy = commentCopy(c.rawText?.trim() || c.cleanText, c.emojis);
                             return (
                               <article
                                 key={c.id}
