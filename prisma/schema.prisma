@@ -115,6 +115,8 @@ model Tenant {
   /// Sal especifica del tenant usada para pseudonimizar autores de redes.
   anonymizationSalt String @map("anonymization_salt")
   isActive  Boolean  @default(true) @map("is_active")
+  /// Cuenta nuestra: desde acá se puede publicar y contestar como ella.
+  isOwned   Boolean  @default(false) @map("is_owned")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

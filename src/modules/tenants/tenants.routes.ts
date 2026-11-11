@@ -25,10 +25,17 @@ const CreateTenantSchema = z.object({
 const PatchTenantSchema = z
   .object({
     isActive: z.boolean().optional(),
+    isOwned: z.boolean().optional(),
     instagram: z.string().trim().min(1).max(200).optional(),
     twitter: z.string().trim().max(200).nullable().optional(),
   })
-  .refine((value) => value.isActive !== undefined || value.twitter !== undefined || value.instagram !== undefined, {
+  .refine(
+    (value) =>
+      value.isActive !== undefined ||
+      value.isOwned !== undefined ||
+      value.twitter !== undefined ||
+      value.instagram !== undefined,
+    {
     message: 'Nada para actualizar',
   });
 
@@ -45,6 +52,7 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
       instagramHandle: true,
       twitterHandle: true,
       isActive: true,
+      isOwned: true,
       createdAt: true,
     } as const;
 
@@ -136,6 +144,7 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
         where: { id },
         data: {
           ...(body.isActive === undefined ? {} : { isActive: body.isActive }),
+          ...(body.isOwned === undefined ? {} : { isOwned: body.isOwned }),
           ...(instagramHandle === undefined ? {} : { instagramHandle }),
           ...(twitterHandle === undefined ? {} : { twitterHandle }),
         },
@@ -146,6 +155,7 @@ export async function tenantsRoutes(app: FastifyInstance): Promise<void> {
           instagramHandle: true,
           twitterHandle: true,
           isActive: true,
+          isOwned: true,
         },
       });
     },

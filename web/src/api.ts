@@ -52,6 +52,7 @@ export interface TenantOption {
   instagramHandle?: string | null;
   twitterHandle?: string | null;
   isActive?: boolean;
+  isOwned?: boolean;
 }
 
 async function request<T>(path: string, init: RequestInit = {}, tenantId?: string): Promise<T> {
@@ -136,7 +137,7 @@ export function createTenant(
 
 export function patchTenant(
   id: string,
-  body: { isActive?: boolean; instagram?: string; twitter?: string | null },
+  body: { isActive?: boolean; isOwned?: boolean; instagram?: string; twitter?: string | null },
 ) {
   return request<TenantOption>(`/tenants/${id}`, {
     method: 'PATCH',

@@ -35,6 +35,7 @@ import { AccountLogo } from './logos';
 import { ComparePage } from './Compare';
 import { Reading } from './Reading';
 import { SuggestionsPanel } from './Suggestions';
+import { PublishPage } from './Publish';
 import { CommentReply } from './Reply';
 import { TasksPage } from './Tasks';
 import { EcosystemView, EcosystemsPage } from './Ecosystem';
@@ -46,6 +47,7 @@ import {
   IconChart,
   IconChevron,
   IconComment,
+  IconCompose,
   IconFeed,
   IconGear,
   IconInstagram,
@@ -56,7 +58,7 @@ import {
 } from './icons';
 
 type Tab = 'resumen' | 'publicaciones' | 'sugerencias' | 'referencias';
-type Screen = 'home' | 'settings' | 'profile' | 'accounts' | 'users' | 'compare' | 'tasks' | 'ecosystem' | 'groups';
+type Screen = 'home' | 'settings' | 'profile' | 'accounts' | 'users' | 'compare' | 'tasks' | 'ecosystem' | 'groups' | 'publish';
 
 const ECOSYSTEM_KEY = 'sld_ecosystem_id';
 
@@ -581,6 +583,14 @@ function Dashboard({
               <IconFeed size={18} />
               Monitoreo
             </button>
+            <button
+              type="button"
+              className={`icon-btn${screen === 'publish' ? ' active' : ''}`}
+              onClick={() => setScreen('publish')}
+            >
+              <IconCompose size={18} />
+              Publicar
+            </button>
             {canSwitchTenant ? (
               <button
                 type="button"
@@ -746,6 +756,9 @@ function Dashboard({
                 : liveTenants
             }
           />
+        ) : null}
+        {screen === 'publish' ? (
+          <PublishPage accounts={liveTenants} listeningId={activeTenantId || null} />
         ) : null}
         {screen === 'tasks' && ecosystem ? (
           <TasksPage key={ecosystem.id} ecosystemName={ecosystem.name} />
@@ -1252,6 +1265,21 @@ function AccountsPage({
   const [ok, setOk] = useState('');
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
+  async function markOwned(tenant: TenantOption) {
+    setTogglingId(tenant.id);
+    setError('');
+    setOk('');
+    try {
+      const updated = await patchTenant(tenant.id, { isOwned: !tenant.isOwned });
+      onUpdated(updated);
+      setOk(updated.isOwned ? `${updated.name} quedó como cuenta propia.` : `${updated.name} ya no es propia.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar');
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   async function toggleActive(tenant: TenantOption) {
     const next = tenant.isActive === false;
     if (
@@ -1307,10 +1335,19 @@ function AccountsPage({
                     {t.id === activeTenantId && !inactive ? (
                       <span className="pill">Activa ahora</span>
                     ) : null}
+                    {t.isOwned ? <span className="pill">Propia</span> : null}
                     {inactive ? <span className="pill dim">Inactiva</span> : null}
                   </strong>
                   <AccountHandles tenant={t} onUpdated={onUpdated} />
                 </span>
+                <button
+                  type="button"
+                  className="btn small secondary"
+                  disabled={togglingId === t.id}
+                  onClick={() => void markOwned(t)}
+                >
+                  {togglingId === t.id ? '…' : t.isOwned ? 'Dejar de ser nuestra' : 'Es nuestra'}
+                </button>
                 <button
                   type="button"
                   className={`btn small ${inactive ? '' : 'secondary'}`}
