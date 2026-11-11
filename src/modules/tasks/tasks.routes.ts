@@ -1,6 +1,6 @@
 /**
- * Pizarra de tareas de una cuenta. Cada municipio ve solo las suyas.
- * Cualquier usuario autenticado del tenant puede crearlas y moverlas.
+ * Pizarra de tareas de un ecosistema. Las cuentas del mismo grupo
+ * comparten las tareas. Cualquier usuario autenticado puede crearlas y moverlas.
  */
 import type { FastifyInstance } from 'fastify';
 import type { TaskStatus } from '@prisma/client';
@@ -22,14 +22,23 @@ const PatchSchema = z.object({
   beforeId: z.string().uuid().nullable().optional(),
 });
 
+async function ecosystemOf(tenantId: string): Promise<string> {
+  const member = await prisma.ecosystemMember.findFirst({
+    where: { tenantId },
+    select: { ecosystemId: true },
+  });
+  if (!member) throw new NotFoundError('Esta cuenta no está en un ecosistema');
+  return member.ecosystemId;
+}
+
 async function placeTask(
-  tenantId: string,
+  ecosystemId: string,
   id: string,
   status: TaskStatus,
   beforeId: string | null,
 ): Promise<void> {
   const column = await prisma.task.findMany({
-    where: { tenantId, OR: [{ status }, { id }] },
+    where: { ecosystemId, OR: [{ status }, { id }] },
     orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
   });
   const current = column.find((task) => task.id === id);
@@ -57,9 +66,9 @@ export async function tasksRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authenticate);
 
   app.get('/tasks', async (request) => {
-    const tenantId = resolveTenantId(request);
+    const ecosystemId = await ecosystemOf(resolveTenantId(request));
     return prisma.task.findMany({
-      where: { tenantId },
+      where: { ecosystemId },
       orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
       select: {
         id: true,
@@ -72,15 +81,15 @@ export async function tasksRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/tasks', async (request, reply) => {
-    const tenantId = resolveTenantId(request);
+    const ecosystemId = await ecosystemOf(resolveTenantId(request));
     const data = CreateSchema.parse(request.body);
     const last = await prisma.task.aggregate({
-      where: { tenantId, status: data.status },
+      where: { ecosystemId, status: data.status },
       _max: { position: true },
     });
     const created = await prisma.task.create({
       data: {
-        tenantId,
+        ecosystemId,
         title: data.title,
         status: data.status,
         position: (last._max.position ?? -1) + 1,
@@ -97,24 +106,24 @@ export async function tasksRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.patch<{ Params: { id: string } }>('/tasks/:id', async (request) => {
-    const tenantId = resolveTenantId(request);
+    const ecosystemId = await ecosystemOf(resolveTenantId(request));
     const { id } = request.params;
     const data = PatchSchema.parse(request.body);
     const existing = await prisma.task.findFirst({
-      where: { id, tenantId },
+      where: { id, ecosystemId },
       select: { id: true, status: true },
     });
     if (!existing) throw new NotFoundError('Tarea no encontrada');
 
     if (data.status) {
-      await placeTask(tenantId, id, data.status, data.beforeId ?? null);
+      await placeTask(ecosystemId, id, data.status, data.beforeId ?? null);
     }
     if (data.title) {
       await prisma.task.update({ where: { id }, data: { title: data.title } });
     }
 
     const updated = await prisma.task.findFirst({
-      where: { id, tenantId },
+      where: { id, ecosystemId },
       select: {
         id: true,
         title: true,
@@ -128,10 +137,10 @@ export async function tasksRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.delete<{ Params: { id: string } }>('/tasks/:id', async (request, reply) => {
-    const tenantId = resolveTenantId(request);
+    const ecosystemId = await ecosystemOf(resolveTenantId(request));
     const { id } = request.params;
     const existing = await prisma.task.findFirst({
-      where: { id, tenantId },
+      where: { id, ecosystemId },
       select: { id: true },
     });
     if (!existing) throw new NotFoundError('Tarea no encontrada');

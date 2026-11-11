@@ -10,7 +10,7 @@ import { ingestPayload } from '../ingestion/ingestion.service';
 import { upsertDiscoveredAccounts } from '../watchlist/watchlist.service';
 import { processIngestionEvent } from '../processing/processing.service';
 import { mapTwitterDataset } from '../ingestion/twitter.mapper';
-import { apifyConfigured, scrapeInstagramPosts, scrapeTweets } from './apify.client';
+import { scrapeInstagramPosts, scrapeTweets } from './apify.client';
 
 export type SearchNetwork = 'instagram' | 'twitter';
 
@@ -67,10 +67,11 @@ export async function runTenantSearch(
   tenantId: string,
   resultsPerAccount: number,
   network: SearchNetwork = 'instagram',
+  apifyToken: string,
 ) {
   const handles = await listSearchAccounts(tenantId);
   if (network === 'twitter') {
-    return runTwitterSearch(tenantId, handles.twitter, resultsPerAccount);
+    return runTwitterSearch(tenantId, handles.twitter, resultsPerAccount, apifyToken);
   }
   const accounts = handles.instagram ? [handles.instagram] : [];
   const urls = accounts
@@ -81,7 +82,7 @@ export async function runTenantSearch(
     throw new ValidationError('Esta cuenta no tiene un perfil de Instagram.');
   }
 
-  const { runId, items } = await scrapeInstagramPosts(urls, resultsPerAccount);
+  const { runId, items } = await scrapeInstagramPosts(apifyToken, urls, resultsPerAccount);
   if (items.length === 0) {
     return {
       network: 'instagram' as const,
@@ -119,13 +120,14 @@ async function runTwitterSearch(
   tenantId: string,
   account: string | null,
   resultsPerAccount: number,
+  apifyToken: string,
 ) {
   const handle = account ? normalizeTwitterHandle(account) : null;
   if (!handle) {
     throw new ValidationError('Esta cuenta no tiene un usuario de Twitter.');
   }
 
-  const { runId, items } = await scrapeTweets(handle, resultsPerAccount);
+  const { runId, items } = await scrapeTweets(apifyToken, handle, resultsPerAccount);
   const accounts = [`@${handle}`];
   if (items.length === 0) {
     return {
@@ -158,4 +160,3 @@ async function runTwitterSearch(
   };
 }
 
-export { apifyConfigured };

@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   clearSession,
-  createTenant,
   createUser,
+  fetchApifyKey,
+  fetchEcosystems,
   fetchMe,
+  saveApifyKey,
   fetchUsers,
   patchTenant,
   patchUser,
@@ -19,6 +21,8 @@ import {
   runScrape,
   setActiveTenantId,
   setSession,
+  type EcosystemAccount,
+  type EcosystemGroup,
   type PostRow,
   type SessionUser,
   type SystemUser,
@@ -31,13 +35,14 @@ import { AccountLogo } from './logos';
 import { ComparePage } from './Compare';
 import { Reading } from './Reading';
 import { SuggestionsPanel } from './Suggestions';
+import { CommentReply } from './Reply';
 import { TasksPage } from './Tasks';
+import { EcosystemView, EcosystemsPage } from './Ecosystem';
 import {
   IconAccounts,
   IconAt,
   IconBack,
   IconBoard,
-  IconCaret,
   IconChart,
   IconChevron,
   IconComment,
@@ -51,17 +56,9 @@ import {
 } from './icons';
 
 type Tab = 'resumen' | 'publicaciones' | 'sugerencias' | 'referencias';
-type Screen = 'home' | 'settings' | 'profile' | 'accounts' | 'users' | 'compare' | 'tasks';
+type Screen = 'home' | 'settings' | 'profile' | 'accounts' | 'users' | 'compare' | 'tasks' | 'ecosystem' | 'groups';
 
-function slugFromName(name: string): string {
-  return name
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48);
-}
+const ECOSYSTEM_KEY = 'sld_ecosystem_id';
 
 function canManageWatchlist(role: string): boolean {
   return role === 'ADMIN' || role === 'SUPER_ADMIN';
@@ -205,11 +202,14 @@ function Login({ onOk }: { onOk: (user: SessionUser) => void }) {
   );
 }
 
-function emptyFeed(feed: 'instagram' | 'twitter'): string {
+function emptyFeed(feed: 'instagram' | 'twitter', together = false): string {
+  const who = together ? 'este ecosistema' : 'esta cuenta';
   if (feed === 'twitter') {
-    return 'Esta cuenta todavía no tiene tweets. Cargá el usuario en Cuentas y apretá Buscar.';
+    return together
+      ? 'Este ecosistema todavía no tiene tweets.'
+      : 'Esta cuenta todavía no tiene tweets. Cargá el usuario en Cuentas y apretá Buscar.';
   }
-  return 'No hay publicaciones de Instagram en esta cuenta.';
+  return `No hay publicaciones de Instagram en ${who}.`;
 }
 
 function isTwitterUrl(url: string): boolean {
@@ -280,7 +280,7 @@ function SearchBar({
   }
 
   const hint = !configured
-    ? 'Falta APIFY_TOKEN en el servidor.'
+    ? 'Cargá tu clave de Apify en Ajustes → Perfil.'
     : !handle
       ? network === 'twitter'
         ? 'Esta cuenta no tiene un usuario de Twitter. Cargalo en Ajustes → Cuentas.'
@@ -331,8 +331,14 @@ function Dashboard({
     return getActiveTenantId() ?? user.tenantId ?? '';
   });
   const [openPosts, setOpenPosts] = useState<string[]>([]);
+  const [replyCommentId, setReplyCommentId] = useState<string | null>(null);
   const [focusPostId, setFocusPostId] = useState<string | null>(null);
-  const [screen, setScreen] = useState<Screen>('home');
+  const [screen, setScreen] = useState<Screen>('ecosystem');
+  const [scope, setScope] = useState<'account' | 'group'>('account');
+  const [ecosystems, setEcosystems] = useState<EcosystemGroup[]>([]);
+  const [ecosystemId, setEcosystemId] = useState<string | null>(
+    () => localStorage.getItem(ECOSYSTEM_KEY),
+  );
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const admin = canManageWatchlist(user.role);
@@ -342,7 +348,10 @@ function Dashboard({
     [tenants],
   );
   const activeAccount = liveTenants.find((t) => t.id === activeTenantId);
-  const theme = themeForSlug(activeAccount?.slug ?? user.tenantSlug);
+  const ecosystem = ecosystems.find((item) => item.id === ecosystemId) ?? ecosystems[0] ?? null;
+  const theme = themeForSlug(
+    ecosystem?.accounts[0]?.slug ?? activeAccount?.slug ?? user.tenantSlug,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -373,6 +382,35 @@ function Dashboard({
   }, [user.tenantId]);
 
   useEffect(() => {
+    let cancelled = false;
+    void fetchEcosystems()
+      .then(async (list) => {
+        if (cancelled) return;
+        setEcosystems(list);
+        const freshTenants = await fetchTenants().catch(() => null);
+        if (!cancelled && freshTenants) setTenants(freshTenants);
+        const stored = localStorage.getItem(ECOSYSTEM_KEY);
+        const next = list.find((item) => item.id === stored) ?? list[0] ?? null;
+        setEcosystemId(next?.id ?? null);
+        if (next) localStorage.setItem(ECOSYSTEM_KEY, next.id);
+        const memberIds = new Set(next?.accounts.map((account) => account.id) ?? []);
+        if (next && !memberIds.has(getActiveTenantId() ?? '')) {
+          const first = next.accounts[0];
+          if (first) {
+            setActiveTenantId(first.id);
+            setActiveTenant(first.id);
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setEcosystems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (screen !== 'accounts') return;
     let cancelled = false;
     void fetchTenants()
@@ -385,7 +423,52 @@ function Dashboard({
     };
   }, [screen]);
 
+  const groupAccounts = ecosystem?.accounts ?? [];
+  const groupKey = groupAccounts.map((account) => account.id).join(',');
+
   useEffect(() => {
+    if (scope === 'group') {
+      if (groupAccounts.length === 0) return;
+      let cancelled = false;
+      async function loadGroup() {
+        try {
+          const bundles = await Promise.all(
+            groupAccounts.map(async (account) => {
+              const page = await fetchPosts(account.id);
+              return page.items.map((post) => ({
+                ...post,
+                accountId: account.id,
+                accountName: account.name,
+                accountSlug: account.slug,
+              }));
+            }),
+          );
+          if (cancelled) return;
+          const merged = bundles.flat().sort((a, b) => {
+            const left = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+            const right = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+            return right - left;
+          });
+          setError('');
+          setPosts(merged);
+          setWatchlist([]);
+          setSummary({
+            total: merged.reduce((sum, post) => sum + post.comments.length, 0),
+            posts: merged.length,
+            byCategory: [],
+            bySentiment: [],
+          });
+        } catch (err) {
+          if (!cancelled) {
+            setError(err instanceof Error ? err.message : 'Error al cargar');
+          }
+        }
+      }
+      void loadGroup();
+      return () => {
+        cancelled = true;
+      };
+    }
     if (!activeTenantId && canSwitchTenant) return;
     let cancelled = false;
     async function load() {
@@ -410,7 +493,7 @@ function Dashboard({
     return () => {
       cancelled = true;
     };
-  }, [activeTenantId, canSwitchTenant, reloadKey]);
+  }, [scope, groupKey, activeTenantId, canSwitchTenant, reloadKey]);
 
   const visibleWatchlist = useMemo(
     () =>
@@ -426,6 +509,41 @@ function Dashboard({
     const node = document.getElementById(`post-${focusPostId}`);
     node?.scrollIntoView({ block: 'start' });
   }, [tab, focusPostId]);
+
+  function chooseEcosystem(next: EcosystemGroup) {
+    setEcosystemId(next.id);
+    localStorage.setItem(ECOSYSTEM_KEY, next.id);
+    const first = next.accounts[0];
+    if (first) {
+      setActiveTenantId(first.id);
+      setActiveTenant(first.id);
+      setSummary(null);
+      setPosts([]);
+      setWatchlist([]);
+      setOpenPosts([]);
+      setReloadKey((n) => n + 1);
+    }
+  }
+
+  function openAccount(account: EcosystemAccount) {
+    setScope('account');
+    setActiveTenantId(account.id);
+    setActiveTenant(account.id);
+    setSummary(null);
+    setPosts([]);
+    setWatchlist([]);
+    setOpenPosts([]);
+    setReloadKey((n) => n + 1);
+  }
+
+  function openGroup() {
+    setScope('group');
+    setSummary(null);
+    setPosts([]);
+    setWatchlist([]);
+    setOpenPosts([]);
+    setReloadKey((n) => n + 1);
+  }
 
   function openInPublications(postId: string) {
     setOpenPosts((current) => (current.includes(postId) ? current : [...current, postId]));
@@ -446,6 +564,14 @@ function Dashboard({
           <nav className="app-nav" aria-label="Secciones">
             <button
               type="button"
+              className={`icon-btn${screen === 'ecosystem' ? ' active' : ''}`}
+              onClick={() => setScreen('ecosystem')}
+            >
+              <IconAccounts size={18} />
+              Ecosistema
+            </button>
+            <button
+              type="button"
               className={`icon-btn${screen === 'home' ? ' active' : ''}`}
               onClick={() => {
                 setScreen('home');
@@ -454,14 +580,6 @@ function Dashboard({
             >
               <IconFeed size={18} />
               Monitoreo
-            </button>
-            <button
-              type="button"
-              className={`icon-btn${screen === 'tasks' ? ' active' : ''}`}
-              onClick={() => setScreen('tasks')}
-            >
-              <IconBoard size={18} />
-              Tareas
             </button>
             {canSwitchTenant ? (
               <button
@@ -473,22 +591,31 @@ function Dashboard({
                 Comparar
               </button>
             ) : null}
+            <button
+              type="button"
+              className={`icon-btn${screen === 'tasks' ? ' active' : ''}`}
+              onClick={() => setScreen('tasks')}
+            >
+              <IconBoard size={18} />
+              Tareas
+            </button>
           </nav>
         </div>
         <div className="app-bar-right">
-          {canSwitchTenant && liveTenants.length > 0 ? (
-            <AccountSwitch
-              tenants={liveTenants}
-              activeTenantId={activeTenantId}
-              onChange={(id) => {
-                setActiveTenantId(id);
-                setActiveTenant(id);
-                setSummary(null);
-                setPosts([]);
-                setWatchlist([]);
-                setOpenPosts([]);
-              }}
-            />
+          {ecosystem ? (
+            <div className="now-listening" aria-label="Cuenta en uso">
+              {scope === 'account' ? (
+                <AccountLogo slug={activeAccount?.slug} size={22} />
+              ) : null}
+              <span>
+                <span className="now-eco">{ecosystem.name}</span>
+                <strong>
+                  {scope === 'account'
+                    ? (activeAccount?.name ?? 'Una cuenta')
+                    : 'Todas las cuentas'}
+                </strong>
+              </span>
+            </div>
           ) : (
             <div className="meta">{user.tenantName ?? 'Piloto'}</div>
           )}
@@ -498,7 +625,8 @@ function Dashboard({
               screen === 'settings' ||
               screen === 'profile' ||
               screen === 'accounts' ||
-              screen === 'users'
+              screen === 'users' ||
+              screen === 'groups'
                 ? ' active'
                 : ''
             }`}
@@ -519,6 +647,8 @@ function Dashboard({
             canManageAccounts={canSwitchTenant}
             onOpenProfile={() => setScreen('profile')}
             onOpenAccounts={() => setScreen('accounts')}
+            ecosystemName={ecosystem?.name}
+            onOpenGroups={() => setScreen('groups')}
             onOpenUsers={() => setScreen('users')}
           />
         ) : null}
@@ -527,29 +657,22 @@ function Dashboard({
         ) : null}
         {screen === 'users' && canSwitchTenant ? (
           <UsersPage
-            tenants={tenants}
+            tenants={tenants.filter(
+              (tenant) =>
+                !ecosystem || ecosystem.accounts.some((account) => account.id === tenant.id),
+            )}
             currentUserId={user.id}
             onBack={() => setScreen('settings')}
           />
         ) : null}
         {screen === 'accounts' ? (
           <AccountsPage
-            tenants={tenants}
+            tenants={tenants.filter(
+              (tenant) =>
+                !ecosystem || ecosystem.accounts.some((account) => account.id === tenant.id),
+            )}
             activeTenantId={activeTenantId}
             onBack={() => setScreen('settings')}
-            onCreated={(tenant) => {
-              setTenants((list) =>
-                [...list, { ...tenant, isActive: tenant.isActive ?? true }].sort(
-                  (a, b) => a.name.localeCompare(b.name, 'es'),
-                ),
-              );
-              setActiveTenantId(tenant.id);
-              setActiveTenant(tenant.id);
-              setSummary(null);
-              setPosts([]);
-              setWatchlist([]);
-              setOpenPosts([]);
-            }}
             onUpdated={(tenant) => {
               setTenants((list) =>
                 list
@@ -563,7 +686,10 @@ function Dashboard({
               );
               if (tenant.isActive === false && tenant.id === activeTenantId) {
                 const next = tenants.find(
-                  (t) => t.id !== tenant.id && t.isActive !== false,
+                  (t) =>
+                    t.id !== tenant.id &&
+                    t.isActive !== false &&
+                    (!ecosystem || ecosystem.accounts.some((account) => account.id === t.id)),
                 );
                 if (next) {
                   setActiveTenantId(next.id);
@@ -580,26 +706,70 @@ function Dashboard({
             }}
           />
         ) : null}
-        {screen === 'compare' && canSwitchTenant ? (
-          <ComparePage tenants={liveTenants} />
-        ) : null}
-        {screen === 'tasks' && activeTenantId ? (
-          <TasksPage
-            key={activeTenantId}
-            accountName={activeAccount?.name ?? user.tenantName ?? 'esta cuenta'}
+        {screen === 'groups' && canSwitchTenant ? (
+          <EcosystemsPage
+            groups={ecosystems}
+            activeId={ecosystem?.id ?? null}
+            onSelect={chooseEcosystem}
+            available={tenants.filter(
+              (tenant) =>
+                tenant.isActive !== false &&
+                !ecosystems.some((item) => item.accounts.some((account) => account.id === tenant.id)),
+            )}
+            onBack={() => setScreen('settings')}
+            onCreated={(created) => {
+              setEcosystems((list) =>
+                [...list, created].sort((a, b) => a.name.localeCompare(b.name, 'es')),
+              );
+              chooseEcosystem(created);
+            }}
           />
         ) : null}
-        {screen === 'tasks' && !activeTenantId ? (
-          <p className="hint">Elegí una cuenta para ver sus tareas.</p>
+        {screen === 'ecosystem' && ecosystem ? (
+          <EcosystemView
+            group={ecosystem}
+            selectedId={scope === 'account' ? activeTenantId : null}
+            onOpenAccount={openAccount}
+            onOpenGroup={openGroup}
+          />
+        ) : null}
+        {screen === 'ecosystem' && !ecosystem ? (
+          <p className="hint">Todavía no hay un ecosistema armado.</p>
+        ) : null}
+        {screen === 'compare' && canSwitchTenant ? (
+          <ComparePage
+            tenants={
+              ecosystem
+                ? liveTenants.filter((tenant) =>
+                    ecosystem.accounts.some((account) => account.id === tenant.id),
+                  )
+                : liveTenants
+            }
+          />
+        ) : null}
+        {screen === 'tasks' && ecosystem ? (
+          <TasksPage key={ecosystem.id} ecosystemName={ecosystem.name} />
+        ) : null}
+        {screen === 'tasks' && !ecosystem ? (
+          <p className="hint">Elegí un ecosistema para ver sus tareas.</p>
         ) : null}
         {screen === 'home' ? (
           <>
         {error ? <p className="error">{error}</p> : null}
         <div className="page-head">
           <div className="page-title">
-            <AccountLogo slug={activeAccount?.slug} size={52} />
+            {scope === 'group' && ecosystem ? null : (
+              <AccountLogo slug={activeAccount?.slug} size={52} />
+            )}
             <div>
-              <h2>{activeAccount?.name ?? user.tenantName ?? 'Escucha'}</h2>
+              <h2>
+                {scope === 'group' && ecosystem
+                  ? ecosystem.name
+                  : (activeAccount?.name ?? user.tenantName ?? 'Escucha')}
+              </h2>
+              {scope === 'group' && ecosystem ? (
+                <p>{ecosystem.accounts.map((account) => account.name).join(' · ')}</p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -622,7 +792,7 @@ function Dashboard({
             </button>
           ))}
         </div>
-        {admin ? (
+        {admin && scope === 'account' ? (
           <SearchBar
             tenantId={activeTenantId}
             network={feed}
@@ -654,14 +824,16 @@ function Dashboard({
             <IconComment size={16} />
             Sugerencias
           </button>
-          <button
-            type="button"
-            className={tab === 'referencias' ? 'active' : ''}
-            onClick={() => setTab('referencias')}
-          >
-            <IconAt size={16} />
-            Activos{visibleWatchlist.length ? ` (${visibleWatchlist.length})` : ''}
-          </button>
+          {scope === 'account' ? (
+            <button
+              type="button"
+              className={tab === 'referencias' ? 'active' : ''}
+              onClick={() => setTab('referencias')}
+            >
+              <IconAt size={16} />
+              Activos{visibleWatchlist.length ? ` (${visibleWatchlist.length})` : ''}
+            </button>
+          ) : null}
         </div>
 
         {tab === 'resumen' ? (
@@ -670,7 +842,7 @@ function Dashboard({
           ) : (
             <Reading
               posts={visiblePosts}
-              empty={emptyFeed(feed)}
+              empty={emptyFeed(feed, scope === 'group')}
               onOpenPost={openInPublications}
             />
           )
@@ -682,7 +854,7 @@ function Dashboard({
           ) : (
             <SuggestionsPanel
               posts={visiblePosts}
-              empty={emptyFeed(feed)}
+              empty={emptyFeed(feed, scope === 'group')}
               onOpenPost={openInPublications}
             />
           )
@@ -691,7 +863,7 @@ function Dashboard({
         {tab === 'publicaciones' ? (
           <div className="post-list">
             {visiblePosts.length === 0 ? (
-              <p className="muted">{emptyFeed(feed)}</p>
+              <p className="muted">{emptyFeed(feed, scope === 'group')}</p>
             ) : (
               <div className="post-toolbar">
                 <span className="muted">{visiblePosts.length} publicaciones</span>
@@ -731,6 +903,12 @@ function Dashboard({
                     <IconChevron open={open} />
                     <span className="post-toggle-body">
                       <span className="post-meta">
+                        {post.accountName ? (
+                          <span className="post-account">
+                            <AccountLogo slug={post.accountSlug} size={18} />
+                            {post.accountName}
+                          </span>
+                        ) : null}
                         {post.ownerUsername ? `@${post.ownerUsername}` : 'Post'}
                         {post.publishedAt ? ` · ${formatWhen(post.publishedAt)}` : ''}
                       </span>
@@ -823,7 +1001,28 @@ function Dashboard({
                                       {formatWhen(c.publishedAt)}
                                     </time>
                                   ) : null}
+                                  {copy.body && !copy.emojiOnly ? (
+                                    <button
+                                      type="button"
+                                      className={`reply-toggle${replyCommentId === c.id ? ' on' : ''}`}
+                                      aria-expanded={replyCommentId === c.id}
+                                      onClick={() =>
+                                        setReplyCommentId((current) => (current === c.id ? null : c.id))
+                                      }
+                                    >
+                                      Responder
+                                    </button>
+                                  ) : null}
                                 </div>
+                                {replyCommentId === c.id && copy.body ? (
+                                  <CommentReply
+                                    comment={copy.body}
+                                    accountName={
+                                      post.accountName ?? activeAccount?.name ?? user.tenantName ?? 'esta cuenta'
+                                    }
+                                    accountSlug={post.accountSlug ?? activeAccount?.slug}
+                                  />
+                                ) : null}
                               </article>
                             );
                           })
@@ -893,76 +1092,19 @@ function Dashboard({
   );
 }
 
-function AccountSwitch({
-  tenants,
-  activeTenantId,
-  onChange,
-}: {
-  tenants: TenantOption[];
-  activeTenantId: string;
-  onChange: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const current = tenants.find((t) => t.id === activeTenantId);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDocClick(event: MouseEvent) {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('.tenant-switch')) return;
-      setOpen(false);
-    }
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
-
-  return (
-    <div className="tenant-switch">
-      <span>Cuenta</span>
-      <div className="account-menu">
-        <button
-          type="button"
-          className="account-trigger"
-          aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
-        >
-          <AccountLogo slug={current?.slug} size={22} />
-          {current?.name ?? 'Elegí una cuenta'}
-          <IconCaret open={open} size={14} />
-        </button>
-        {open ? (
-          <ul className="account-list">
-            {tenants.map((t) => (
-              <li key={t.id}>
-                <button
-                  type="button"
-                  className={t.id === activeTenantId ? 'active' : ''}
-                  onClick={() => {
-                    onChange(t.id);
-                    setOpen(false);
-                  }}
-                >
-                  <AccountLogo slug={t.slug} size={22} />
-                  {t.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function SettingsHome({
   canManageAccounts,
+  ecosystemName,
   onOpenProfile,
   onOpenAccounts,
+  onOpenGroups,
   onOpenUsers,
 }: {
   canManageAccounts: boolean;
+  ecosystemName?: string;
   onOpenProfile: () => void;
   onOpenAccounts: () => void;
+  onOpenGroups: () => void;
   onOpenUsers: () => void;
 }) {
   return (
@@ -990,7 +1132,20 @@ function SettingsHome({
             </span>
             <span className="settings-tile-copy">
               <strong>Cuentas</strong>
-              <span className="muted">Instagram, Twitter y alta de cuentas</span>
+              <span className="muted">Instagram y Twitter de este ecosistema</span>
+            </span>
+          </button>
+        ) : null}
+        {canManageAccounts ? (
+          <button type="button" className="settings-tile" onClick={onOpenGroups}>
+            <span className="settings-icon" aria-hidden>
+              <IconAccounts size={20} />
+            </span>
+            <span className="settings-tile-copy">
+              <strong>Ecosistemas</strong>
+              <span className="muted">
+                {ecosystemName ? `En uso: ${ecosystemName}` : 'Elegí cuál se escucha'}
+              </span>
             </span>
           </button>
         ) : null}
@@ -1086,57 +1241,16 @@ function AccountsPage({
   tenants,
   activeTenantId,
   onBack,
-  onCreated,
   onUpdated,
 }: {
   tenants: TenantOption[];
   activeTenantId: string;
   onBack: () => void;
-  onCreated: (tenant: TenantOption) => void;
   onUpdated: (tenant: TenantOption) => void;
 }) {
-  const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
-  const [instagram, setInstagram] = useState('');
-  const [twitter, setTwitter] = useState('');
-  const [slugTouched, setSlugTouched] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
-  const [busy, setBusy] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-
-  function onNameChange(value: string) {
-    setName(value);
-    if (!slugTouched) setSlug(slugFromName(value));
-  }
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError('');
-    setOk('');
-    try {
-      const created = await createTenant(
-        name.trim(),
-        slug.trim(),
-        instagram.trim(),
-        twitter.trim() || undefined,
-      );
-      onCreated(created);
-      setName('');
-      setSlug('');
-      setInstagram('');
-      setTwitter('');
-      setSlugTouched(false);
-      setOk(
-        `Lista “${created.name}”. Buscar trae posts de @${created.instagramHandle}.`,
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function toggleActive(tenant: TenantOption) {
     const next = tenant.isActive === false;
@@ -1171,72 +1285,13 @@ function AccountsPage({
       </button>
       <h2>Cuentas</h2>
       <p className="muted settings-lead">
-        Cada cuenta tiene un Instagram y, si lo cargás, un Twitter.
-        Buscar trae solo la red que estés mirando. Desactivar la saca del
-        selector sin borrar lo ya cargado.
+        Las cuentas de este ecosistema. Podés corregir Instagram o Twitter.
+        Desactivar una la saca del mapa sin borrar lo ya cargado.
       </p>
+      {error ? <p className="error">{error}</p> : null}
+      {ok ? <p className="ok-msg">{ok}</p> : null}
 
-      <form className="card account-form" onSubmit={(e) => void onSubmit(e)}>
-        <h3 className="settings-kicker">Nueva cuenta</h3>
-        <label htmlFor="tenant-name">Nombre</label>
-        <input
-          id="tenant-name"
-          value={name}
-          onChange={(e) => onNameChange(e.target.value)}
-          placeholder="Ángeles Reig"
-          required
-        />
-        <label htmlFor="tenant-slug">Identificador (slug)</label>
-        <input
-          id="tenant-slug"
-          value={slug}
-          onChange={(e) => {
-            setSlugTouched(true);
-            setSlug(e.target.value.toLowerCase());
-          }}
-          placeholder="angeles-reig"
-          pattern="[a-z0-9-]+"
-          minLength={2}
-          required
-        />
-        <p className="muted field-hint">
-          Solo minúsculas, números y guiones.
-        </p>
-        <label htmlFor="tenant-instagram">Instagram a scrapear</label>
-        <input
-          id="tenant-instagram"
-          value={instagram}
-          onChange={(e) => setInstagram(e.target.value)}
-          placeholder="sanfermunicipio"
-          required
-        />
-        <p className="muted field-hint">
-          El usuario, sin @. Al elegir esta cuenta, Buscar trae sus posts.
-        </p>
-        <label htmlFor="tenant-twitter">Twitter (opcional)</label>
-        <input
-          id="tenant-twitter"
-          value={twitter}
-          onChange={(e) => setTwitter(e.target.value)}
-          placeholder="proargentina"
-        />
-        <p className="muted field-hint">
-          Usuario de X, sin @. Se puede cargar después en la lista.
-        </p>
-        {error ? <p className="error">{error}</p> : null}
-        {ok ? <p className="ok-msg">{ok}</p> : null}
-        <p>
-          <button
-            className="btn"
-            type="submit"
-            disabled={busy || !name.trim() || !slug.trim() || !instagram.trim()}
-          >
-            {busy ? 'Creando…' : 'Crear cuenta'}
-          </button>
-        </p>
-      </form>
-
-      <h3 className="settings-kicker">Ya cargadas</h3>
+      <h3 className="settings-kicker">Cuentas</h3>
       {tenants.length === 0 ? (
         <p className="muted">Todavía no hay cuentas.</p>
       ) : (
@@ -1481,6 +1536,46 @@ function ProfilePage({
   user: SessionUser;
   onBack: () => void;
 }) {
+  const [hint, setHint] = useState<string | null>(null);
+  const [configured, setConfigured] = useState(false);
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [ok, setOk] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchApifyKey()
+      .then((status) => {
+        if (cancelled) return;
+        setConfigured(status.configured);
+        setHint(status.hint);
+      })
+      .catch(() => {
+        if (!cancelled) setError('No se pudo leer la clave de Apify.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function save(next: string) {
+    setBusy(true);
+    setError('');
+    setOk('');
+    try {
+      const status = await saveApifyKey(next);
+      setConfigured(status.configured);
+      setHint(status.hint);
+      setToken('');
+      setOk(status.configured ? 'Clave guardada.' : 'Clave quitada.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar la clave');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="settings-page">
       <button type="button" className="back-btn" onClick={onBack}>
@@ -1506,6 +1601,45 @@ function ProfilePage({
           <br />
           {ROLE_LABEL[user.role] ?? user.role}
         </p>
+        <form
+          className="apify-key"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save(token);
+          }}
+        >
+          <span className="muted">Clave de Apify</span>
+          <p className="muted">
+            {configured
+              ? `Guardada ${hint ?? ''}. Las búsquedas usan la tuya.`
+              : 'Todavía no cargaste una. Sin esta clave, Buscar no corre.'}
+          </p>
+          <input
+            type="password"
+            autoComplete="off"
+            value={token}
+            placeholder="Pegá tu clave"
+            aria-label="Clave de Apify"
+            onChange={(event) => setToken(event.target.value)}
+          />
+          <span className="apify-key-actions">
+            <button className="btn" type="submit" disabled={busy || !token.trim()}>
+              {busy ? 'Guardando…' : 'Guardar'}
+            </button>
+            {configured ? (
+              <button
+                className="btn small secondary"
+                type="button"
+                disabled={busy}
+                onClick={() => void save('')}
+              >
+                Quitar
+              </button>
+            ) : null}
+          </span>
+          {error ? <span className="error">{error}</span> : null}
+          {ok ? <span className="muted">{ok}</span> : null}
+        </form>
       </div>
     </div>
   );

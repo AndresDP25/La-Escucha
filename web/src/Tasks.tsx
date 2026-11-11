@@ -16,7 +16,7 @@ const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'DONE', label: 'Finalizadas' },
 ];
 
-export function TasksPage({ accountName }: { accountName: string }) {
+export function TasksPage({ ecosystemName }: { ecosystemName: string }) {
   const [tasks, setTasks] = useState<BoardTask[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -39,7 +39,7 @@ export function TasksPage({ accountName }: { accountName: string }) {
     return () => {
       cancelled = true;
     };
-  }, [accountName]);
+  }, [ecosystemName]);
 
   async function onCreate(event: FormEvent) {
     event.preventDefault();
@@ -121,7 +121,7 @@ export function TasksPage({ accountName }: { accountName: string }) {
     <section className="tasks-page">
       <div className="page-head">
         <h2>Tareas</h2>
-        <p>De {accountName}. Arrastrá una tarjeta para cambiar de columna.</p>
+        <p>De {ecosystemName}. Arrastrá una tarjeta para cambiar de columna.</p>
       </div>
       {error ? <p className="error">{error}</p> : null}
       <div className="board">

@@ -13,6 +13,7 @@ import { ValidationError, NotFoundError } from '../../shared/errors';
 import { createClassifier } from '../../core/classifier/classifier.factory';
 import { processText } from '../../core/text/text-processor';
 import { buildCompareRows, COMPARE_THEMES } from './compare';
+import { hasPostImage, localImageUrl } from '../media/media';
 
 const CommentsQuerySchema = z.object({
   category: z
@@ -188,12 +189,13 @@ export async function analyticsRoutes(app: FastifyInstance): Promise<void> {
       const rawImage = row.raw && typeof row.raw === 'object' && !Array.isArray(row.raw)
         ? (row.raw as { imageUrl?: unknown }).imageUrl
         : null;
+      const stored = await hasPostImage(row.id);
       mapped.push({
         id: row.id,
         network: row.network,
         caption: row.caption,
         url: row.url,
-        imageUrl: typeof rawImage === 'string' ? rawImage : null,
+        imageUrl: stored ? localImageUrl(row.id) : typeof rawImage === 'string' ? rawImage : null,
         ownerUsername: row.authorRef,
         publishedAt: row.publishedAt,
         category,

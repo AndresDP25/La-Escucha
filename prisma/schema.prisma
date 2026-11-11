@@ -125,9 +125,38 @@ model Tenant {
   posts           Post[]
   comments        Comment[]
   watchlist       WatchlistAccount[]
-  tasks           Task[]
+  ecosystems      EcosystemMember[]
 
   @@map("tenants")
+}
+
+// ----------------------------------------------------------------------------
+// Ecosystem (grupo de cuentas que se escuchan juntas)
+// ----------------------------------------------------------------------------
+
+model Ecosystem {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  members EcosystemMember[]
+  tasks   Task[]
+
+  @@map("ecosystems")
+}
+
+model EcosystemMember {
+  ecosystemId String @map("ecosystem_id")
+  tenantId    String @map("tenant_id")
+
+  ecosystem Ecosystem @relation(fields: [ecosystemId], references: [id], onDelete: Cascade)
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([ecosystemId, tenantId])
+  @@index([tenantId])
+  @@map("ecosystem_members")
 }
 
 // ----------------------------------------------------------------------------
@@ -144,6 +173,8 @@ model User {
   fullName     String   @map("full_name")
   role         Role     @default(VIEWER)
   isActive     Boolean  @default(true) @map("is_active")
+  /// Clave de Apify de esta persona, cifrada. Nunca se devuelve al navegador.
+  apifyToken   String?  @map("apify_token")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -199,21 +230,21 @@ model WatchlistAccount {
 }
 
 // ----------------------------------------------------------------------------
-// Task (pizarra por cuenta: pendiente, en curso, finalizada)
+// Task (pizarra del ecosistema: pendiente, en curso, finalizada)
 // ----------------------------------------------------------------------------
 
 model Task {
-  id        String     @id @default(uuid())
-  tenantId  String     @map("tenant_id")
-  title     String
-  status    TaskStatus @default(TODO)
-  position  Int        @default(0)
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  id          String     @id @default(uuid())
+  ecosystemId String     @map("ecosystem_id")
+  title       String
+  status      TaskStatus @default(TODO)
+  position    Int        @default(0)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ecosystem Ecosystem @relation(fields: [ecosystemId], references: [id], onDelete: Cascade)
 
-  @@index([tenantId, status, position])
+  @@index([ecosystemId, status, position])
   @@map("tasks")
 }
 

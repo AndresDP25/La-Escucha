@@ -3,7 +3,6 @@
  * Arranca apify/instagram-scraper, espera el run y baja el dataset.
  * El token no sale del servidor.
  */
-import { env } from '../../config/env';
 import { AppError } from '../../shared/errors';
 
 const API = 'https://api.apify.com/v2';
@@ -21,27 +20,23 @@ interface ApifyRun {
   defaultDatasetId?: string;
 }
 
-function token(): string {
-  const value = env.APIFY_TOKEN?.trim();
-  if (!value) {
+function requireToken(value: string): string {
+  const token = value.trim();
+  if (!token) {
     throw new AppError(
       503,
-      'Falta APIFY_TOKEN en el servidor',
+      'Cargá tu clave de Apify en Ajustes → Perfil.',
       'APIFY_NOT_CONFIGURED',
     );
   }
-  return value;
+  return token;
 }
 
-export function apifyConfigured(): boolean {
-  return Boolean(env.APIFY_TOKEN?.trim());
-}
-
-async function apify<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function apify<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     ...init,
     headers: {
-      Authorization: `Bearer ${token()}`,
+      Authorization: `Bearer ${requireToken(token)}`,
       'Content-Type': 'application/json',
       ...(init.headers ?? {}),
     },
@@ -65,13 +60,14 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function runActor(
+  token: string,
   actor: string,
   input: unknown,
 ): Promise<{ runId: string; items: unknown[] }> {
   const params = new URLSearchParams({
     maxTotalChargeUsd: String(MAX_CHARGE_USD),
   });
-  let run = await apify<ApifyRun>(`/acts/${actor}/runs?${params}`, {
+  let run = await apify<ApifyRun>(token, `/acts/${actor}/runs?${params}`, {
     method: 'POST',
     body: JSON.stringify(input),
   });
@@ -80,7 +76,7 @@ async function runActor(
   const done = new Set(['SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED-OUT']);
   while (!done.has(run.status) && Date.now() < deadline) {
     await sleep(POLL_MS);
-    run = await apify<ApifyRun>(`/actor-runs/${run.id}`);
+    run = await apify<ApifyRun>(token, `/actor-runs/${run.id}`);
   }
 
   if (run.status !== 'SUCCEEDED') {
@@ -95,6 +91,7 @@ async function runActor(
   }
 
   const items = await apify<unknown[]>(
+    token,
     `/datasets/${run.defaultDatasetId}/items?clean=true`,
   );
   return { runId: run.id, items: Array.isArray(items) ? items : [] };
@@ -102,10 +99,11 @@ async function runActor(
 
 /** Corre el scraper de posts y devuelve el array crudo del dataset. */
 export async function scrapeInstagramPosts(
+  token: string,
   urls: string[],
   resultsLimit: number,
 ): Promise<{ runId: string; items: unknown[] }> {
-  return runActor(INSTAGRAM_ACTOR, {
+  return runActor(token, INSTAGRAM_ACTOR, {
     directUrls: urls,
     resultsType: 'posts',
     resultsLimit,
@@ -114,10 +112,11 @@ export async function scrapeInstagramPosts(
 
 /** Tuiteos propios y respuestas al usuario. El tope de gasto es el mismo que Instagram. */
 export async function scrapeTweets(
+  token: string,
   handle: string,
   resultsLimit: number,
 ): Promise<{ runId: string; items: unknown[] }> {
-  return runActor(TWITTER_ACTOR, {
+  return runActor(token, TWITTER_ACTOR, {
     searchTerms: [`from:${handle}`, `to:${handle}`],
     maxItems: resultsLimit * 2,
     sort: 'Latest',

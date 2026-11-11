@@ -41,6 +41,42 @@ function formatWhen(iso: string | null): string {
   }).format(new Date(iso));
 }
 
+function joinEs(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  if (items.length === 2) return `${items[0]} y ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`;
+}
+
+function compareReading(data: CompareResult): string {
+  if (data.accounts.length < 2) return '';
+  const wins = new Map<string, string[]>();
+  for (const row of data.categories) {
+    if (row.category === 'OTHER') continue;
+    const ranked = data.accounts
+      .map((account) => ({ id: account.id, count: row.counts[account.id] ?? 0 }))
+      .sort((a, b) => b.count - a.count);
+    const first = ranked[0];
+    const second = ranked[1];
+    if (!first || !second) continue;
+    const ahead =
+      first.count >= 4 && (second.count === 0 || first.count >= second.count * 1.5);
+    if (!ahead) continue;
+    const label = (CATEGORY_LABEL[row.category] ?? row.category).toLowerCase();
+    const list = wins.get(first.id) ?? [];
+    list.push(label);
+    wins.set(first.id, list);
+  }
+  const lines = data.accounts
+    .filter((account) => wins.has(account.id))
+    .map((account) => {
+      const themes = wins.get(account.id) ?? [];
+      const verb = themes.length > 1 ? 'pesan' : 'pesa';
+      return `En ${account.name} ${verb} ${joinEs(themes)}`;
+    });
+  if (lines.length === 0) return 'Los temas se reparten parejo entre las cuentas.';
+  return `${lines.join('. ')}.`;
+}
+
 function sentimentClass(sentiment: string): string {
   if (sentiment === 'POSITIVE') return 'pill pos';
   if (sentiment === 'NEGATIVE') return 'pill neg';
@@ -179,6 +215,9 @@ export function ComparePage({ tenants }: { tenants: TenantOption[] }) {
         <p className="muted">Elegí al menos una cuenta.</p>
       ) : null}
       {loading && !data ? <p className="muted">Leyendo comentarios…</p> : null}
+      {data && accounts.length > 1 ? (
+        <p className="compare-reading">{compareReading(data)}</p>
+      ) : null}
       {data && accounts.length > 0 ? (
         <div className="compare-scroll">
           <table className="compare-table">
@@ -207,32 +246,44 @@ export function ComparePage({ tenants }: { tenants: TenantOption[] }) {
               </tr>
             </thead>
             <tbody>
-              {data.categories.map((row) => (
+              {data.categories.map((row) => {
+                const peak = Math.max(...accounts.map((account) => row.counts[account.id] ?? 0), 0);
+                return (
                 <tr key={row.category} className={row.category === 'OTHER' ? 'compare-other' : ''}>
                   <th scope="row">{CATEGORY_LABEL[row.category] ?? row.category}</th>
                   {accounts.map((account) => {
                     const count = row.counts[account.id] ?? 0;
+                    const width = peak === 0 ? 0 : Math.round((count / peak) * 100);
                     const active =
                       open?.tenantId === account.id && open.category === row.category;
+                    const meter = (
+                      <>
+                        <span className="compare-count">{count}</span>
+                        <span className="compare-bar-track" aria-hidden>
+                          <span className="compare-bar" style={{ width: `${width}%` }} />
+                        </span>
+                      </>
+                    );
                     return (
                       <td key={account.id} className="num">
                         {count === 0 ? (
-                          <span className="muted">0</span>
+                          <span className="compare-meter muted">{meter}</span>
                         ) : (
                           <button
                             type="button"
-                            className={active ? 'cell on' : 'cell'}
+                            className={active ? 'cell compare-meter on' : 'cell compare-meter'}
                             aria-pressed={active}
                             onClick={() => openCell(account.id, row.category, count)}
                           >
-                            {count}
+                            {meter}
                           </button>
                         )}
                       </td>
                     );
                   })}
                 </tr>
-              ))}
+                );
+              })}
               <tr className="compare-total">
                 <th scope="row">Total</th>
                 {accounts.map((account) => {

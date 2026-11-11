@@ -54,15 +54,15 @@ export interface TenantOption {
   isActive?: boolean;
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, tenantId?: string): Promise<T> {
   const token = getToken();
   const headers = new Headers(init.headers);
   if (!headers.has('Content-Type') && init.body) {
     headers.set('Content-Type', 'application/json');
   }
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const tenantId = getActiveTenantId();
-  if (tenantId) headers.set('x-tenant-id', tenantId);
+  const activeTenant = tenantId ?? getActiveTenantId();
+  if (activeTenant) headers.set('x-tenant-id', activeTenant);
 
   const res = await fetch(`/api${path}`, { ...init, headers });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
@@ -76,8 +76,50 @@ export function fetchMe() {
   return request<{ user: SessionUser }>('/auth/me');
 }
 
+export interface ApifyKeyStatus {
+  configured: boolean;
+  hint: string | null;
+}
+
+export function fetchApifyKey() {
+  return request<ApifyKeyStatus>('/auth/apify-token');
+}
+
+export function saveApifyKey(token: string) {
+  return request<ApifyKeyStatus>('/auth/apify-token', {
+    method: 'PUT',
+    body: JSON.stringify({ token }),
+  });
+}
+
 export function fetchTenants() {
   return request<TenantOption[]>('/tenants');
+}
+
+export interface EcosystemAccount {
+  id: string;
+  name: string;
+  slug: string;
+  instagramHandle: string | null;
+  twitterHandle: string | null;
+}
+
+export interface EcosystemGroup {
+  id: string;
+  name: string;
+  slug: string;
+  accounts: EcosystemAccount[];
+}
+
+export function fetchEcosystems() {
+  return request<EcosystemGroup[]>('/ecosystems');
+}
+
+export function createEcosystem(name: string, tenantIds: string[]) {
+  return request<EcosystemGroup>('/ecosystems', {
+    method: 'POST',
+    body: JSON.stringify({ name, tenantIds }),
+  });
 }
 
 export function createTenant(
@@ -250,10 +292,13 @@ export interface PostRow {
   category?: string;
   sentiment?: string;
   comments: PostComment[];
+  accountId?: string;
+  accountName?: string;
+  accountSlug?: string;
 }
 
-export function fetchPosts() {
-  return request<{ items: PostRow[] }>('/analytics/posts');
+export function fetchPosts(tenantId?: string) {
+  return request<{ items: PostRow[] }>('/analytics/posts', {}, tenantId);
 }
 
 export interface WatchlistRow {

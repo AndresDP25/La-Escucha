@@ -22,6 +22,9 @@ prisma/*.db
 # Volcado de la base local. Tiene comentarios; no va al repo.
 sld.sql
 
+# Fotos bajadas de las redes. No van al repo.
+data/
+
 # Sistema operativo / editor
 .DS_Store
 Thumbs.db

@@ -12,6 +12,7 @@
  */
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma';
+import { savePostImage } from '../media/media';
 import { logger } from '../../config/logger';
 import { processText } from '../../core/text/text-processor';
 import { applyPrivacyPolicy } from '../../core/privacy/anonymizer';
@@ -166,7 +167,7 @@ async function upsertPost(
     raw: rawPost as unknown as Prisma.InputJsonValue,
   };
 
-  return prisma.post.upsert({
+  const post = await prisma.post.upsert({
     where: {
       tenantId_network_externalId: {
         tenantId,
@@ -183,4 +184,8 @@ async function upsertPost(
     },
     select: { id: true },
   });
+  if (rawPost.imageUrl) {
+    await savePostImage(post.id, rawPost.imageUrl).catch(() => false);
+  }
+  return post;
 }

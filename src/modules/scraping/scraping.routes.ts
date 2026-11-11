@@ -4,15 +4,42 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { prisma } from '../../db/prisma';
 import { authenticate, authorize, resolveTenantId } from '../../middlewares/auth';
+import { AppError } from '../../shared/errors';
+import { openSecret } from '../../shared/secret-box';
 import {
   RESULTS_DEFAULT,
   RESULTS_MAX,
   RESULTS_MIN,
-  apifyConfigured,
   listSearchAccounts,
   runTenantSearch,
 } from './scraping.service';
+
+async function userApifyToken(userId: string): Promise<string | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { apifyToken: true },
+  });
+  if (!user?.apifyToken) return null;
+  try {
+    const value = openSecret(user.apifyToken).trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
+function requireUserApifyToken(token: string | null): string {
+  if (!token) {
+    throw new AppError(
+      503,
+      'Cargá tu clave de Apify en Ajustes → Perfil.',
+      'APIFY_NOT_CONFIGURED',
+    );
+  }
+  return token;
+}
 
 const BodySchema = z.object({
   resultsPerAccount: z.coerce
@@ -33,11 +60,14 @@ export async function scrapingRoutes(app: FastifyInstance): Promise<void> {
     async (request) => {
       const tenantId = resolveTenantId(request);
       const handles = await listSearchAccounts(tenantId);
+      const token = request.currentUser
+        ? await userApifyToken(request.currentUser.userId)
+        : null;
       return {
         accounts: handles.instagram ? [handles.instagram] : [],
         instagram: handles.instagram,
         twitter: handles.twitter,
-        apifyConfigured: apifyConfigured(),
+        apifyConfigured: Boolean(token),
       };
     },
   );
@@ -48,7 +78,10 @@ export async function scrapingRoutes(app: FastifyInstance): Promise<void> {
     async (request) => {
       const tenantId = resolveTenantId(request);
       const { resultsPerAccount, network } = BodySchema.parse(request.body ?? {});
-      return runTenantSearch(tenantId, resultsPerAccount, network);
+      const token = requireUserApifyToken(
+        request.currentUser ? await userApifyToken(request.currentUser.userId) : null,
+      );
+      return runTenantSearch(tenantId, resultsPerAccount, network, token);
     },
   );
 }
